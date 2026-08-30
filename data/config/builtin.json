@@ -63,8 +63,8 @@
         "timeout": 5
     },
     {
-        "name": "sms_builtin_user_sessions",
-        "help_text": "Active login sessions per user",
+        "name": "sms_builtin_user_id",
+        "help_text": "Numeric user ID of each currently logged-in user",
         "value_type": "gauge",
         "cmd": "builtin.users.by_user",
         "timeout": 5

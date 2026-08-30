@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import pwd
 from collections.abc import Callable
 from functools import partial
 from typing import TYPE_CHECKING
@@ -156,15 +157,19 @@ def is_known_command(cmd: str) -> bool:
 # --- sample builders ---
 
 
-def _user_sample(cmd: str, counts: dict[str, int]) -> SampleValue:
-    """Derive a `builtin.users.*` value from who output."""
+def _user_sample(
+    cmd: str, counts: dict[str, int], uids: dict[str, str]
+) -> SampleValue:
+    """Derive a `builtin.users.*` value from who output.
+
+    count/sessions aggregate the per-user session counts; by_user maps
+    each logged-in user to their uid string.
+    """
     if cmd == "builtin.users.count":
         return repr(float(len(counts)))
     if cmd == "builtin.users.sessions":
         return repr(float(sum(counts.values())))
-    return LabeledSample(
-        "user", {user: repr(float(n)) for user, n in counts.items()}
-    )
+    return LabeledSample("user", {user: uids[user] for user in counts})
 
 
 def _cpu_sample(cmd: str, loads: tuple[float, float, float]) -> str:
@@ -307,6 +312,18 @@ async def _collect_who(
     return counts
 
 
+def _user_uids(usernames: list[str]) -> dict[str, str]:
+    """Map username -> canonical uid string; 0.0 on lookup failure."""
+    uids: dict[str, str] = {}
+    for user in usernames:
+        try:
+            uids[user] = repr(float(pwd.getpwnam(user).pw_uid))
+        except KeyError:
+            log.warning("builtin: no passwd entry for user %r", user)
+            uids[user] = "0.0"
+    return uids
+
+
 async def _count_processes(runner: ProcessRunner, metrics: list[Metric]) -> int:
     """Number of processes from one `ps aux` run."""
     stdout = await _safe_run(runner, ["ps", "aux"], _max_timeout(metrics))
@@ -346,8 +363,11 @@ async def collect(
     user_metrics = [m for m in metrics if m.cmd in USER_COMMANDS]
     if user_metrics:
         counts = await _collect_who(runner, user_metrics)
+        uids: dict[str, str] = {}
+        if any(m.cmd == "builtin.users.by_user" for m in user_metrics):
+            uids = await asyncio.to_thread(_user_uids, list(counts))
         for m in user_metrics:
-            out[m.name] = _user_sample(m.cmd, counts)
+            out[m.name] = _user_sample(m.cmd, counts, uids)
 
     process_metrics = [m for m in metrics if m.cmd == PROCESS_COMMAND]
     if process_metrics:

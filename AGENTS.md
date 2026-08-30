@@ -292,8 +292,10 @@ Both render as Prometheus `counter` metrics.
 
 - `builtin.users.count` — distinct logged-in users (`who`)
 - `builtin.users.sessions` — active login sessions (`who`)
-- `builtin.users.by_user` — per-user sessions as a labeled family
-  (`name{user="alice"} N`); renders HELP/TYPE only when nobody is logged in
+- `builtin.users.by_user` — numeric user ID of each logged-in user
+  as a labeled family (`name{user="alice"} 1000.0`, resolved via
+  `pwd`, `0.0` if unresolvable); renders HELP/TYPE only when nobody
+  is logged in
 - `builtin.os.processes` — number of processes (`ps aux`, header skipped)
 - `builtin.os.packages_upgradable` — upgradable packages
   (`apt-get -s upgrade`, counts `Inst ` lines)

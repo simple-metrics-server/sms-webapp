@@ -52,7 +52,7 @@ name fails verification.
 |---------|--------------------------|---------|
 | `builtin.users.count` | `sms_builtin_users_count` | distinct logged-in users (`who`) |
 | `builtin.users.sessions` | `sms_builtin_users_sessions` | active login sessions (`who`) |
-| `builtin.users.by_user` | `sms_builtin_user_sessions` | per-user sessions, labeled: `name{user="alice"} N`; renders HELP/TYPE only (no samples) when nobody is logged in |
+| `builtin.users.by_user` | `sms_builtin_user_id` | numeric user ID of each logged-in user, labeled: `name{user="alice"} 1000.0` (resolved via `pwd`, `0.0` if unresolvable); renders HELP/TYPE only (no samples) when nobody is logged in |
 | `builtin.os.processes` | `sms_builtin_os_processes` | process count (`ps aux`, header skipped) |
 | `builtin.os.packages_upgradable` | `sms_builtin_os_packages_upgradable` | upgradable packages (`apt-get -s upgrade`, counts `Inst ` lines) — Debian |
 | `builtin.os.reboot_required` | `sms_builtin_os_reboot_required` | `1.0` if `/var/run/reboot-required` exists, else `0.0` (no subprocess) — Debian |

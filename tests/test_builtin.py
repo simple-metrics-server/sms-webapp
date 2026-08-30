@@ -233,7 +233,17 @@ def test_verify_rejects_distribution_value_type(tmp_path):
 # --- users ---
 
 
-def test_users_count_sessions_and_by_user(tmp_path):
+def test_users_count_sessions_and_by_user(tmp_path, monkeypatch):
+    import webapp.core.builtin as builtin_mod
+
+    seen = []
+
+    def fake_uids(usernames):
+        seen.append(usernames)
+        return {"alice": "1000.0", "bob": "1001.0"}
+
+    monkeypatch.setattr(builtin_mod, "_user_uids", fake_uids)
+
     metrics = [
         metric(name="m_count", cmd="builtin.users.count"),
         metric(name="m_sessions", cmd="builtin.users.sessions"),
@@ -251,9 +261,47 @@ def test_users_count_sessions_and_by_user(tmp_path):
     assert results["m_count"] == "2.0"
     assert results["m_sessions"] == "3.0"
     assert results["m_by_user"] == LabeledSample(
-        "user", {"alice": "2.0", "bob": "1.0"}
+        "user", {"alice": "1000.0", "bob": "1001.0"}
     )
+    assert seen == [["alice", "bob"]]
     assert h.support.runner.calls == [(["who"], 5.0)]
+
+
+def test_user_uids_fallback_on_lookup_failure(monkeypatch):
+    import pwd as pwd_mod
+
+    import webapp.core.builtin as builtin_mod
+
+    class FakePw:
+        def __init__(self, uid):
+            self.pw_uid = uid
+
+    monkeypatch.setattr(
+        pwd_mod, "getpwnam", lambda u: FakePw({"alice": 1000}[u])
+    )
+    assert builtin_mod._user_uids(["alice", "ghost"]) == {
+        "alice": "1000.0",
+        "ghost": "0.0",
+    }
+
+
+def test_uids_not_resolved_without_by_user(tmp_path, monkeypatch):
+    import webapp.core.builtin as builtin_mod
+
+    def boom(usernames):
+        raise AssertionError("uid lookup must not run")
+
+    monkeypatch.setattr(builtin_mod, "_user_uids", boom)
+
+    metrics = [metric(name="m_count", cmd="builtin.users.count")]
+    h = make_handler(tmp_path, metrics)
+    h.support.runner = FakeRunner(
+        {"who": "alice pts/0 2026-08-30 10:22 (:0)\n"}
+    )
+    read = asyncio.run(h.read())
+    asyncio.run(h.verify(read))
+    results = asyncio.run(h.execute(read))
+    assert results["m_count"] == "1.0"
 
 
 def test_users_zero_when_who_fails(tmp_path):
