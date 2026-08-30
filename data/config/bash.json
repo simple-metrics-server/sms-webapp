@@ -1,0 +1,39 @@
+[
+    {
+        "name": "sms_bash_test_counter",
+        "help_text": "Test counter",
+        "value_type": "counter",
+        "cmd": "echo 1",
+        "timeout": 1
+    },
+    {
+        "name": "sms_bash_test_gauge",
+        "help_text": "Test gauge",
+        "value_type": "gauge",
+        "cmd": "echo 1",
+        "timeout": 1
+    },
+    {
+        "name": "sms_bash_test_untyped",
+        "help_text": "Test untyped",
+        "value_type": "untyped",
+        "cmd": "echo 1",
+        "timeout": 1
+    },
+    {
+        "name": "sms_bash_test_histogram",
+        "help_text": "Test histogram",
+        "value_type": "histogram",
+        "buckets": [0.1, 0.5, 1],
+        "cmd": "printf '0.1 1\\n0.5 2\\n1 2\\nsum 0.9\\ncount 2\\n'",
+        "timeout": 1
+    },
+    {
+        "name": "sms_bash_test_summary",
+        "help_text": "Test summary",
+        "value_type": "summary",
+        "quantiles": [0.5, 0.99],
+        "cmd": "printf '0.5 0.25\\n0.99 0.9\\nsum 1.2\\ncount 3\\n'",
+        "timeout": 1
+    }
+]

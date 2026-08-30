@@ -1,0 +1,36 @@
+[project]
+name = "webapp"
+version = "0.1.0"
+description = "Prometheus metrics exporter with pluggable handlers"
+requires-python = ">=3.11"
+dependencies = [
+  "click >= 8.1",
+  "cryptography >= 42",
+  "quart >= 0.19",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+webapp-serve = "webapp.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["webapp*"]
+
+[project.optional-dependencies]
+dev = [
+  "pytest ~= 8.0",
+  "pytest-asyncio ~= 0.23",
+  "black ~= 23.0",
+  "ruff ~= 0.1",
+]
+
+[tool.black]
+line-length = 80
+target-version = ['py311']
+
+[tool.ruff]
+line-length = 80
+target-version = "py311"

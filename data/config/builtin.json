@@ -1,0 +1,177 @@
+[
+    {
+        "name": "sms_builtin_runtime_requests",
+        "help_text": "Number of HTTP requests received since startup",
+        "value_type": "counter",
+        "cmd": "builtin.runtime.requests",
+        "timeout": 1
+    },
+    {
+        "name": "sms_builtin_runtime_scrapes",
+        "help_text": "Number of successfully completed scrape cycles",
+        "value_type": "counter",
+        "cmd": "builtin.runtime.scrapes",
+        "timeout": 1
+    },
+    {
+        "name": "sms_builtin_scrape_duration_seconds",
+        "help_text": "Wall time of the last complete scrape cycle",
+        "value_type": "gauge",
+        "cmd": "builtin.timings.scrape",
+        "timeout": 1
+    },
+    {
+        "name": "sms_builtin_handler_bash_total_seconds",
+        "help_text": "Total wall time of the bash handler in the last cycle",
+        "value_type": "gauge",
+        "cmd": "builtin.timings.handler.BashMetricHandler.total",
+        "timeout": 1
+    },
+    {
+        "name": "sms_builtin_handler_bash_execute_seconds",
+        "help_text": "Execute phase duration of the bash handler in the last cycle",
+        "value_type": "gauge",
+        "cmd": "builtin.timings.handler.BashMetricHandler.execute",
+        "timeout": 1
+    },
+    {
+        "name": "sms_builtin_handler_builtin_total_seconds",
+        "help_text": "Total wall time of the builtin handler in the last cycle",
+        "value_type": "gauge",
+        "cmd": "builtin.timings.handler.BuiltinMetricHandler.total",
+        "timeout": 1
+    },
+    {
+        "name": "sms_builtin_handler_builtin_execute_seconds",
+        "help_text": "Execute phase duration of the builtin handler in the last cycle",
+        "value_type": "gauge",
+        "cmd": "builtin.timings.handler.BuiltinMetricHandler.execute",
+        "timeout": 1
+    },
+    {
+        "name": "sms_builtin_users_count",
+        "help_text": "Number of distinct users currently logged in",
+        "value_type": "gauge",
+        "cmd": "builtin.users.count",
+        "timeout": 5
+    },
+    {
+        "name": "sms_builtin_users_sessions",
+        "help_text": "Number of active login sessions",
+        "value_type": "gauge",
+        "cmd": "builtin.users.sessions",
+        "timeout": 5
+    },
+    {
+        "name": "sms_builtin_user_sessions",
+        "help_text": "Active login sessions per user",
+        "value_type": "gauge",
+        "cmd": "builtin.users.by_user",
+        "timeout": 5
+    },
+    {
+        "name": "sms_builtin_os_processes",
+        "help_text": "Number of running processes",
+        "value_type": "gauge",
+        "cmd": "builtin.os.processes",
+        "timeout": 5
+    },
+    {
+        "name": "sms_builtin_os_packages_upgradable",
+        "help_text": "Number of upgradable packages",
+        "value_type": "gauge",
+        "cmd": "builtin.os.packages_upgradable",
+        "timeout": 30
+    },
+    {
+        "name": "sms_builtin_os_reboot_required",
+        "help_text": "1 if the system needs a reboot, else 0",
+        "value_type": "gauge",
+        "cmd": "builtin.os.reboot_required",
+        "timeout": 1
+    },
+    {
+        "name": "sms_builtin_cpu_count",
+        "help_text": "Number of logical CPUs",
+        "value_type": "gauge",
+        "cmd": "builtin.cpu.count",
+        "timeout": 1
+    },
+    {
+        "name": "sms_builtin_cpu_load1",
+        "help_text": "1 minute load average",
+        "value_type": "gauge",
+        "cmd": "builtin.cpu.load1",
+        "timeout": 5
+    },
+    {
+        "name": "sms_builtin_cpu_load5",
+        "help_text": "5 minute load average",
+        "value_type": "gauge",
+        "cmd": "builtin.cpu.load5",
+        "timeout": 5
+    },
+    {
+        "name": "sms_builtin_cpu_load15",
+        "help_text": "15 minute load average",
+        "value_type": "gauge",
+        "cmd": "builtin.cpu.load15",
+        "timeout": 5
+    },
+    {
+        "name": "sms_builtin_memory_total_bytes",
+        "help_text": "Total physical memory",
+        "value_type": "gauge",
+        "cmd": "builtin.memory.total_bytes",
+        "timeout": 5
+    },
+    {
+        "name": "sms_builtin_memory_available_bytes",
+        "help_text": "Available memory",
+        "value_type": "gauge",
+        "cmd": "builtin.memory.available_bytes",
+        "timeout": 5
+    },
+    {
+        "name": "sms_builtin_memory_used_bytes",
+        "help_text": "Used memory (total minus available)",
+        "value_type": "gauge",
+        "cmd": "builtin.memory.used_bytes",
+        "timeout": 5
+    },
+    {
+        "name": "sms_builtin_disk_total_bytes",
+        "help_text": "Total disk space across real filesystems",
+        "value_type": "gauge",
+        "cmd": "builtin.disk.total_bytes",
+        "timeout": 5
+    },
+    {
+        "name": "sms_builtin_disk_used_bytes",
+        "help_text": "Used disk space across real filesystems",
+        "value_type": "gauge",
+        "cmd": "builtin.disk.used_bytes",
+        "timeout": 5
+    },
+    {
+        "name": "sms_builtin_disk_available_bytes",
+        "help_text": "Available disk space across real filesystems",
+        "value_type": "gauge",
+        "cmd": "builtin.disk.available_bytes",
+        "timeout": 5
+    },
+    {
+        "name": "sms_builtin_network_received_bytes",
+        "help_text": "Total bytes received on non-loopback interfaces",
+        "value_type": "gauge",
+        "cmd": "builtin.network.received_bytes",
+        "timeout": 5
+    },
+    {
+        "name": "sms_builtin_network_transmitted_bytes",
+        "help_text": "Total bytes transmitted on non-loopback interfaces",
+        "value_type": "gauge",
+        "cmd": "builtin.network.transmitted_bytes",
+        "timeout": 5
+    }
+]

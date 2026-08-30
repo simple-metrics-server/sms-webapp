@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Packaging
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+
+# Tooling caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.black_cache/
+
+# Runtime artifacts (Justfile)
+webapp.pid
+webapp.log
+data/metrics.cache*
+
+# TLS material (generated at startup)
+data/keys/
