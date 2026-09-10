@@ -84,6 +84,11 @@ def run_cycle(handler):
     return asyncio.run(handler.finalize(metrics, results))
 
 
+@pytest.fixture(autouse=True)
+def _clear_status_path(monkeypatch):
+    monkeypatch.delenv("OPENVPN_STATUS_PATH", raising=False)
+
+
 def server_text(separator):
     return (
         "\n".join(separator.join(line.split(",")) for line in SERVER_ROWS)
@@ -217,6 +222,34 @@ def test_verify_rejects_unknown_metric(tmp_path):
     metrics = asyncio.run(handler.read())
     with pytest.raises(ValueError, match="unknown openvpn metric"):
         asyncio.run(handler.verify(metrics))
+
+
+def test_env_override_uses_path(tmp_path, monkeypatch):
+    real = write(tmp_path, "real.status", CLIENT_STATUS)
+    missing = str(tmp_path / "missing.status")
+    cfg = make_config(
+        tmp_path,
+        [UP, "sms_openvpn_client_tun_tap_read_bytes_total"],
+        [missing],
+    )
+    monkeypatch.setenv("OPENVPN_STATUS_PATH", real)
+    out = run_cycle(OpenVpnMetricHandler(cfg))
+    assert f'sms_openvpn_up{{status_path="{real}"}} 1.0' in out
+    assert missing not in out
+    assert (
+        f'sms_openvpn_client_tun_tap_read_bytes_total{{status_path="{real}"}} '
+        "153789941.0" in out
+    )
+
+
+def test_env_override_multiple_paths(tmp_path, monkeypatch):
+    p1 = write(tmp_path, "a.status", CLIENT_STATUS)
+    p2 = write(tmp_path, "b.status", CLIENT_STATUS)
+    cfg = make_config(tmp_path, [UP], [str(tmp_path / "missing.status")])
+    monkeypatch.setenv("OPENVPN_STATUS_PATH", f"{p1} {p2}")
+    out = run_cycle(OpenVpnMetricHandler(cfg))
+    assert f'sms_openvpn_up{{status_path="{p1}"}} 1.0' in out
+    assert f'sms_openvpn_up{{status_path="{p2}"}} 1.0' in out
 
 
 def test_duplicate_client_rows_keep_first(tmp_path):

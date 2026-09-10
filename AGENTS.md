@@ -336,8 +336,24 @@ failures.
 
 A handler's `execute()` may also return a `LabeledSample(label_name,
 values)`, rendered as one `name{label="v"} value` line per entry (sorted
-by label value, label values escaped). See
+by label value, label values escaped), or a
+`MultiLabeledSample(label_names, rows)` for several label dimensions
+(each `rows` key is a label value tuple in `label_names` order). See
 `webapp.core.model.SampleValue` for the full result union.
+
+## OpenVPN handler
+
+`OpenVpnMetricHandler` (`webapp/handlers/openvpn.py`) parses OpenVPN
+`--status` files — client stats and server `--status-version 2`/`3` —
+mirroring the discontinued kumina/openvpn_exporter (metrics prefixed
+`sms_openvpn_`). Unlike bash, its config `cmd` holds the
+**space-separated status file path(s)**, not a command line; no
+subprocess runs. The env var `OPENVPN_STATUS_PATH` (space-separated)
+overrides the paths from the config at scrape time. A missing,
+unreadable or malformed status file reports `sms_openvpn_up` `0.0` for
+that path and yields no other samples (warning only; the cycle
+succeeds). Metric names are a fixed schema — see
+[docs/handlers.md](docs/handlers.md#openvpn--webapphandlersopenvpny).
 
 ## Known boundaries (out of scope for now)
 

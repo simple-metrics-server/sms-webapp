@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import shlex
 import time
 from dataclasses import dataclass, field
@@ -14,6 +15,9 @@ from webapp.core.model import (
 )
 
 log = logging.getLogger(__name__)
+
+STATUS_PATH_ENV = "OPENVPN_STATUS_PATH"
+"""Env var overriding the status file paths from the config `cmd`."""
 
 UP = "sms_openvpn_up"
 STATUS_UPDATE_TIME = "sms_openvpn_status_update_time_seconds"
@@ -102,6 +106,21 @@ def _paths(m: Metric) -> list[str]:
     return shlex.split(m.cmd)
 
 
+def _status_path_override() -> list[str]:
+    """Paths from the OPENVPN_STATUS_PATH env var, empty when unset."""
+    raw = os.environ.get(STATUS_PATH_ENV, "").strip()
+    return shlex.split(raw) if raw else []
+
+
+def _timeout_for(
+    path: str, metrics: list[Metric], override: list[str]
+) -> float:
+    """Largest timeout among the metrics requesting this status path."""
+    if override:
+        return max((m.timeout for m in metrics), default=1.0)
+    return max((m.timeout for m in metrics if path in _paths(m)), default=1.0)
+
+
 def _read_file(path: str) -> str:
     with open(path, encoding="utf-8", errors="replace") as f:
         return f.read()
@@ -126,6 +145,10 @@ class OpenVpnMetricHandler(MetricHandler):
     A status file that is missing, unreadable or malformed reports
     `sms_openvpn_up{status_path}=0` and yields no other samples for
     that path (a warning is logged); it never fails the cycle.
+
+    When the `OPENVPN_STATUS_PATH` env var is set, it overrides the
+    paths from the config (space-separated), so installs can point the
+    shipped config at their status file without editing every entry.
     """
 
     required_fields: ClassVar[list[str]] = ["cmd"]
@@ -144,14 +167,16 @@ class OpenVpnMetricHandler(MetricHandler):
             raise ValueError(msg)
 
     async def execute(self, metrics: list[Metric]) -> dict[str, SampleValue]:
-        paths: list[str] = []
-        for m in metrics:
-            for path in _paths(m):
-                if path not in paths:
-                    paths.append(path)
+        override = _status_path_override()
+        paths: list[str] = list(override)
+        if not paths:
+            for m in metrics:
+                for path in _paths(m):
+                    if path not in paths:
+                        paths.append(path)
         parsed: dict[str, ParsedStatus] = {}
         for path in paths:
-            timeout = max(m.timeout for m in metrics if path in _paths(m))
+            timeout = _timeout_for(path, metrics, override)
             parsed[path] = await self._parse_path(path, timeout)
         return self._collect(metrics, parsed)
 

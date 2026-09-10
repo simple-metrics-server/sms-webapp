@@ -119,6 +119,16 @@ cycle, no restart):
 }
 ```
 
+Point the OpenVPN handler at a status file on a non-standard path
+(space-separated for several; no config edits needed):
+
+```bash
+OPENVPN_STATUS_PATH=/var/lib/openvpn/status/server.log just start
+```
+
+See [handlers](docs/handlers.md#openvpn--webapphandlersopenvpny) for
+the OpenVPN metric reference.
+
 ## Further documentation
 
 Detailed topic READMEs live in [docs/](docs/):

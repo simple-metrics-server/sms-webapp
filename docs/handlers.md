@@ -218,6 +218,29 @@ that path (only the problem is logged); it never fails the cycle.
 Config: `data/config/openvpn.json` (defaults to
 `/etc/openvpn/openvpn-status.log`).
 
+Setting the `OPENVPN_STATUS_PATH` env var (space-separated paths)
+overrides the paths from the config at scrape time, so an install can
+point the shipped config at its status file without editing all
+entries. Unset/empty means the config `cmd` values are used. `shlex`
+quoting applies, so a path containing spaces can be single-quoted.
+
+For a host whose status file lives at a non-standard path, either edit
+the `cmd` of every entry in `data/config/openvpn.json`, or (recommended
+for installs) set the env var once — both accept multiple files:
+
+```bash
+# single non-standard file, foreground CLI
+OPENVPN_STATUS_PATH=/var/lib/openvpn/status/server.log just start
+
+# several files (space-separated)
+OPENVPN_STATUS_PATH="/etc/openvpn/status/a.log /etc/openvpn/status/b.log" \
+    just start
+```
+
+For a persistent service, set it in the service environment, e.g. add
+`Environment=OPENVPN_STATUS_PATH=/var/lib/openvpn/status/server.log` to
+the generated unit (or export it from whatever launches the service).
+
 ## Testing a new handler
 
 - `just check` runs the suite; add tests under `tests/` (one file
