@@ -21,6 +21,7 @@ STATUS_PATH_ENV = "OPENVPN_STATUS_PATH"
 """Env var overriding the status file paths from the config `cmd`."""
 
 UP = "sms_openvpn_up"
+STATUS_PATH_METRIC = "sms_openvpn_status_path"
 SERVER_UP = "sms_openvpn_server_up"
 CLIENT_UP = "sms_openvpn_client_up"
 STATUS_UPDATE_TIME = "sms_openvpn_status_update_time_seconds"
@@ -55,6 +56,7 @@ _ROUTE_COLUMN = "Last Ref (time_t)"
 KNOWN_METRICS = frozenset(
     {
         UP,
+        STATUS_PATH_METRIC,
         SERVER_UP,
         CLIENT_UP,
         STATUS_UPDATE_TIME,
@@ -454,7 +456,7 @@ class OpenVpnMetricHandler(MetricHandler):
         m: Metric,
         parsed: dict[str, ParsedStatus],
     ) -> SampleValue:
-        if m.name == UP:
+        if m.name == STATUS_PATH_METRIC:
             return MultiLabeledSample(
                 [STATUS_PATH_LABEL, TYPE_LABEL],
                 {
@@ -464,30 +466,19 @@ class OpenVpnMetricHandler(MetricHandler):
                     for path, st in parsed.items()
                 },
             )
+        if m.name == UP:
+            up: dict[str, bool] = {}
+            for status in parsed.values():
+                kind = status.kind or TYPE_UNKNOWN
+                up[kind] = up.get(kind, False) or not status.error
+            return MultiLabeledSample(
+                [TYPE_LABEL],
+                {(kind,): ("1.0" if ok else "0.0") for kind, ok in up.items()},
+            )
         if m.name == SERVER_UP:
-            return LabeledSample(
-                STATUS_PATH_LABEL,
-                {
-                    path: (
-                        "1.0"
-                        if st.kind == TYPE_SERVER and not st.error
-                        else "0.0"
-                    )
-                    for path, st in parsed.items()
-                },
-            )
+            return self._role_up(parsed, TYPE_SERVER)
         if m.name == CLIENT_UP:
-            return LabeledSample(
-                STATUS_PATH_LABEL,
-                {
-                    path: (
-                        "1.0"
-                        if st.kind == TYPE_CLIENT and not st.error
-                        else "0.0"
-                    )
-                    for path, st in parsed.items()
-                },
-            )
+            return self._role_up(parsed, TYPE_CLIENT)
         if m.name == STATUS_UPDATE_TIME:
             return MultiLabeledSample(
                 [TYPE_LABEL],
@@ -536,6 +527,17 @@ class OpenVpnMetricHandler(MetricHandler):
             ):
                 counters[(TYPE_CLIENT,)] = status.client[key]
         return MultiLabeledSample([TYPE_LABEL], counters)
+
+    def _role_up(
+        self,
+        parsed: dict[str, ParsedStatus],
+        role: str,
+    ) -> MultiLabeledSample:
+        values: dict[tuple[str, ...], str] = {}
+        for status in parsed.values():
+            if status.kind == role:
+                values[(role,)] = "1.0" if not status.error else "0.0"
+        return MultiLabeledSample([TYPE_LABEL], values)
 
     def _rows(
         self,

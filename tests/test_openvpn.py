@@ -9,6 +9,7 @@ from webapp.handlers.openvpn import (
     CONNECTED_CLIENTS,
     ROUTE_METRIC,
     SERVER_UP,
+    STATUS_PATH_METRIC,
     STATUS_UPDATE_TIME,
     UP,
     OpenVpnMetricHandler,
@@ -129,6 +130,7 @@ def test_client_status(tmp_path):
         tmp_path,
         [
             UP,
+            STATUS_PATH_METRIC,
             STATUS_UPDATE_TIME,
             "sms_openvpn_client_tun_tap_read_bytes_total",
             "sms_openvpn_client_auth_read_bytes_total",
@@ -136,7 +138,11 @@ def test_client_status(tmp_path):
         [path],
     )
     out = run_cycle(OpenVpnMetricHandler(cfg))
-    assert f'sms_openvpn_up{{status_path="{path}",type="client"}} 1.0' in out
+    assert 'sms_openvpn_up{type="client"} 1.0' in out
+    assert (
+        "sms_openvpn_status_path"
+        f'{{status_path="{path}",type="client"}} 1.0' in out
+    )
     assert (
         out.count('sms_openvpn_status_update_time_seconds{type="client"}') == 1
     )
@@ -158,6 +164,7 @@ def test_server_status(tmp_path, separator):
         tmp_path,
         [
             UP,
+            STATUS_PATH_METRIC,
             STATUS_UPDATE_TIME,
             CONNECTED_CLIENTS,
             "sms_openvpn_server_client_received_bytes_total",
@@ -167,7 +174,11 @@ def test_server_status(tmp_path, separator):
         [path],
     )
     out = run_cycle(OpenVpnMetricHandler(cfg))
-    assert f'sms_openvpn_up{{status_path="{path}",type="server"}} 1.0' in out
+    assert 'sms_openvpn_up{type="server"} 1.0' in out
+    assert (
+        "sms_openvpn_status_path"
+        f'{{status_path="{path}",type="server"}} 1.0' in out
+    )
     assert (
         "sms_openvpn_status_update_time_seconds"
         '{type="server"} 1490089154.0' in out
@@ -201,6 +212,7 @@ def test_server_status_v1(tmp_path):
         tmp_path,
         [
             UP,
+            STATUS_PATH_METRIC,
             STATUS_UPDATE_TIME,
             CONNECTED_CLIENTS,
             "sms_openvpn_server_client_received_bytes_total",
@@ -210,7 +222,11 @@ def test_server_status_v1(tmp_path):
         [path],
     )
     out = run_cycle(OpenVpnMetricHandler(cfg))
-    assert f'sms_openvpn_up{{status_path="{path}",type="server"}} 1.0' in out
+    assert 'sms_openvpn_up{type="server"} 1.0' in out
+    assert (
+        "sms_openvpn_status_path"
+        f'{{status_path="{path}",type="server"}} 1.0' in out
+    )
     assert (
         "sms_openvpn_status_update_time_seconds"
         '{type="server"} '
@@ -277,14 +293,14 @@ def test_missing_file_reports_up_zero(tmp_path):
     path = str(tmp_path / "does-not-exist.status")
     cfg = make_config(tmp_path, [UP], [path])
     out = run_cycle(OpenVpnMetricHandler(cfg))
-    assert f'sms_openvpn_up{{status_path="{path}",type="unknown"}} 0.0' in out
+    assert 'sms_openvpn_up{type="unknown"} 0.0' in out
 
 
 def test_malformed_file_reports_up_zero(tmp_path):
     path = write(tmp_path, "bad.status", "not an openvpn status file\n")
     cfg = make_config(tmp_path, [UP], [path])
     out = run_cycle(OpenVpnMetricHandler(cfg))
-    assert f'sms_openvpn_up{{status_path="{path}",type="unknown"}} 0.0' in out
+    assert 'sms_openvpn_up{type="unknown"} 0.0' in out
 
 
 def test_non_numeric_metric_value_reports_up_zero(tmp_path):
@@ -294,7 +310,7 @@ def test_non_numeric_metric_value_reports_up_zero(tmp_path):
         tmp_path, [UP, "sms_openvpn_server_client_received_bytes_total"], [path]
     )
     out = run_cycle(OpenVpnMetricHandler(cfg))
-    assert f'sms_openvpn_up{{status_path="{path}",type="unknown"}} 0.0' in out
+    assert 'sms_openvpn_up{type="unknown"} 0.0' in out
     assert "sms_openvpn_server_client_received_bytes_total{" not in out
 
 
@@ -303,26 +319,33 @@ def test_multiple_paths_are_labeled(tmp_path):
     p2 = write(tmp_path, "b.status", CLIENT_STATUS)
     cfg = make_config(
         tmp_path,
-        [UP, "sms_openvpn_client_tun_tap_read_bytes_total"],
+        [UP, STATUS_PATH_METRIC, "sms_openvpn_client_tun_tap_read_bytes_total"],
         [p1, p2],
     )
     out = run_cycle(OpenVpnMetricHandler(cfg))
-    assert f'sms_openvpn_up{{status_path="{p1}",type="client"}} 1.0' in out
-    assert f'sms_openvpn_up{{status_path="{p2}",type="client"}} 1.0' in out
+    assert 'sms_openvpn_up{type="client"} 1.0' in out
+    assert (
+        "sms_openvpn_status_path"
+        f'{{status_path="{p1}",type="client"}} 1.0' in out
+    )
+    assert (
+        "sms_openvpn_status_path"
+        f'{{status_path="{p2}",type="client"}} 1.0' in out
+    )
 
 
 def test_server_and_client_up_distinguish_roles(tmp_path):
     server = write(tmp_path, "server.status", server_text(","))
     cfg = make_config(tmp_path, [SERVER_UP, CLIENT_UP], [server])
     out = run_cycle(OpenVpnMetricHandler(cfg))
-    assert f'sms_openvpn_server_up{{status_path="{server}"}} 1.0' in out
-    assert f'sms_openvpn_client_up{{status_path="{server}"}} 0.0' in out
+    assert 'sms_openvpn_server_up{type="server"} 1.0' in out
+    assert "sms_openvpn_client_up" not in out
 
     client = write(tmp_path, "client.status", CLIENT_STATUS)
     cfg = make_config(tmp_path, [SERVER_UP, CLIENT_UP], [client])
     out = run_cycle(OpenVpnMetricHandler(cfg))
-    assert f'sms_openvpn_server_up{{status_path="{client}"}} 0.0' in out
-    assert f'sms_openvpn_client_up{{status_path="{client}"}} 1.0' in out
+    assert "sms_openvpn_server_up" not in out
+    assert 'sms_openvpn_client_up{type="client"} 1.0' in out
 
 
 def test_verify_rejects_unknown_metric(tmp_path):
@@ -344,7 +367,7 @@ def test_env_override_uses_path(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("OPENVPN_STATUS_PATH", real)
     out = run_cycle(OpenVpnMetricHandler(cfg))
-    assert f'sms_openvpn_up{{status_path="{real}",type="client"}} 1.0' in out
+    assert 'sms_openvpn_up{type="client"} 1.0' in out
     assert missing not in out
     assert (
         "sms_openvpn_client_tun_tap_read_bytes_total"
@@ -355,21 +378,38 @@ def test_env_override_uses_path(tmp_path, monkeypatch):
 def test_env_override_multiple_paths(tmp_path, monkeypatch):
     p1 = write(tmp_path, "a.status", CLIENT_STATUS)
     p2 = write(tmp_path, "b.status", CLIENT_STATUS)
-    cfg = make_config(tmp_path, [UP], [str(tmp_path / "missing.status")])
+    cfg = make_config(
+        tmp_path, [UP, STATUS_PATH_METRIC], [str(tmp_path / "missing.status")]
+    )
     monkeypatch.setenv("OPENVPN_STATUS_PATH", f"{p1} {p2}")
     out = run_cycle(OpenVpnMetricHandler(cfg))
-    assert f'sms_openvpn_up{{status_path="{p1}",type="client"}} 1.0' in out
-    assert f'sms_openvpn_up{{status_path="{p2}",type="client"}} 1.0' in out
+    assert 'sms_openvpn_up{type="client"} 1.0' in out
+    assert (
+        "sms_openvpn_status_path"
+        f'{{status_path="{p1}",type="client"}} 1.0' in out
+    )
+    assert (
+        "sms_openvpn_status_path"
+        f'{{status_path="{p2}",type="client"}} 1.0' in out
+    )
 
 
 def test_env_override_json_array(tmp_path, monkeypatch):
     p1 = write(tmp_path, "a.status", CLIENT_STATUS)
     p2 = write(tmp_path, "b.status", CLIENT_STATUS)
-    cfg = make_config(tmp_path, [UP], [str(tmp_path / "missing.status")])
+    cfg = make_config(
+        tmp_path, [UP, STATUS_PATH_METRIC], [str(tmp_path / "missing.status")]
+    )
     monkeypatch.setenv("OPENVPN_STATUS_PATH", json.dumps([p1, p2]))
     out = run_cycle(OpenVpnMetricHandler(cfg))
-    assert f'sms_openvpn_up{{status_path="{p1}",type="client"}} 1.0' in out
-    assert f'sms_openvpn_up{{status_path="{p2}",type="client"}} 1.0' in out
+    assert (
+        "sms_openvpn_status_path"
+        f'{{status_path="{p1}",type="client"}} 1.0' in out
+    )
+    assert (
+        "sms_openvpn_status_path"
+        f'{{status_path="{p2}",type="client"}} 1.0' in out
+    )
 
 
 @pytest.mark.parametrize(
@@ -379,11 +419,19 @@ def test_env_override_json_array(tmp_path, monkeypatch):
 def test_env_override_list_flavors(tmp_path, monkeypatch, template):
     p1 = write(tmp_path, "a.status", CLIENT_STATUS)
     p2 = write(tmp_path, "b.status", CLIENT_STATUS)
-    cfg = make_config(tmp_path, [UP], [str(tmp_path / "missing.status")])
+    cfg = make_config(
+        tmp_path, [UP, STATUS_PATH_METRIC], [str(tmp_path / "missing.status")]
+    )
     monkeypatch.setenv("OPENVPN_STATUS_PATH", template.format(a=p1, b=p2))
     out = run_cycle(OpenVpnMetricHandler(cfg))
-    assert f'sms_openvpn_up{{status_path="{p1}",type="client"}} 1.0' in out
-    assert f'sms_openvpn_up{{status_path="{p2}",type="client"}} 1.0' in out
+    assert (
+        "sms_openvpn_status_path"
+        f'{{status_path="{p1}",type="client"}} 1.0' in out
+    )
+    assert (
+        "sms_openvpn_status_path"
+        f'{{status_path="{p2}",type="client"}} 1.0' in out
+    )
 
 
 def test_config_cmd_accepts_path_list(tmp_path):
@@ -391,18 +439,26 @@ def test_config_cmd_accepts_path_list(tmp_path):
     p2 = write(tmp_path, "b.status", CLIENT_STATUS)
     metrics = [
         {
-            "name": UP,
+            "name": name,
             "help_text": "help",
             "value_type": "gauge",
             "cmd": [p1, p2],
             "timeout": 5,
         }
+        for name in (UP, STATUS_PATH_METRIC)
     ]
     cfg = tmp_path / "openvpn.json"
     cfg.write_text(json.dumps(metrics), encoding="utf-8")
     out = run_cycle(OpenVpnMetricHandler(str(cfg)))
-    assert f'sms_openvpn_up{{status_path="{p1}",type="client"}} 1.0' in out
-    assert f'sms_openvpn_up{{status_path="{p2}",type="client"}} 1.0' in out
+    assert 'sms_openvpn_up{type="client"} 1.0' in out
+    assert (
+        "sms_openvpn_status_path"
+        f'{{status_path="{p1}",type="client"}} 1.0' in out
+    )
+    assert (
+        "sms_openvpn_status_path"
+        f'{{status_path="{p2}",type="client"}} 1.0' in out
+    )
 
 
 def test_config_cmd_list_preserves_paths_with_spaces(tmp_path):
@@ -411,17 +467,21 @@ def test_config_cmd_list_preserves_paths_with_spaces(tmp_path):
     path = write(spaced, "a.status", CLIENT_STATUS)
     metrics = [
         {
-            "name": UP,
+            "name": name,
             "help_text": "help",
             "value_type": "gauge",
             "cmd": [path],
             "timeout": 5,
         }
+        for name in (UP, STATUS_PATH_METRIC)
     ]
     cfg = tmp_path / "openvpn.json"
     cfg.write_text(json.dumps(metrics), encoding="utf-8")
     out = run_cycle(OpenVpnMetricHandler(str(cfg)))
-    assert f'sms_openvpn_up{{status_path="{path}",type="client"}} 1.0' in out
+    assert (
+        "sms_openvpn_status_path"
+        f'{{status_path="{path}",type="client"}} 1.0' in out
+    )
 
 
 def test_duplicate_client_rows_keep_first(tmp_path):

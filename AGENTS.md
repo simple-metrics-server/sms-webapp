@@ -354,13 +354,14 @@ also accepted), not a command line; no
 subprocess runs. The env var `OPENVPN_STATUS_PATH` (JSON array,
 bracketed/comma-separated list, or space-separated) overrides the
 paths from the config at scrape time. The `status_path` label appears
-only on the `*_up` metrics; data metrics use a `type` label
-(`client`/`server`) to distinguish roles. `sms_openvpn_up` tracks parse
-success while `sms_openvpn_server_up` / `sms_openvpn_client_up` report
-the detected role. A missing, unreadable or malformed status file
-reports `sms_openvpn_up` `0.0` for that path and yields no other
-samples (warning only; the cycle succeeds). Metric names are a fixed
-schema — see
+only on the dedicated `sms_openvpn_status_path` metric (value `1`/`0`
+per file); every other metric uses a `type` label (`client`/`server`)
+to distinguish roles. `sms_openvpn_up` tracks parse success while
+`sms_openvpn_server_up` / `sms_openvpn_client_up` report the detected
+role. A missing, unreadable or malformed status file reports
+`sms_openvpn_up` `0.0` for that path and yields no other samples
+(warning only; the cycle succeeds). Metric names are a fixed schema —
+see
 [docs/handlers.md](docs/handlers.md#openvpn--webapphandlersopenvpny).
 
 ## Known boundaries (out of scope for now)

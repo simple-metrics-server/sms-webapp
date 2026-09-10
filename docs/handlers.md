@@ -204,17 +204,18 @@ discontinued
 version-1 rows are normalized to the same shape — timestamps converted
 to epoch, and columns the format lacks (`virtual_address`, `username`)
 left empty. The exposed families mirror kumina, with the repository's
-`sms_` prefix. The `*_up` metrics carry a `status_path` label; the data
-metrics carry a `type` label whose value is `client` or `server` (the
-detected status-file kind), so client- and server-sourced data can be
-told apart without the logfile path.
+`sms_` prefix. The status file path is exposed only by the dedicated
+`sms_openvpn_status_path` metric; every other metric uses a `type`
+label whose value is `client` or `server` (the detected status-file
+kind), so client- and server-sourced data can be told apart without
+the logfile path.
 
 Metric names are a fixed schema — the handler only recognises the
 names below (config entries with any other name are rejected by
 `verify()`). A missing, unreadable or malformed status file reports
-`sms_openvpn_up{status_path,type="unknown"}` `0.0` and yields no other
-samples for that path (only the problem is logged); it never fails the
-cycle.
+`sms_openvpn_up` `0.0` (and `sms_openvpn_status_path` `0.0` with
+`type="unknown"`) and yields no other samples for that path (only the
+problem is logged); it never fails the cycle.
 
 A status file is either client or server format, so families that
 produced no samples for any configured path are omitted entirely (no
@@ -223,9 +224,10 @@ server-only host.
 
 | metric | type | labels |
 |--------|------|--------|
-| `sms_openvpn_up` | gauge | `status_path,type` |
-| `sms_openvpn_server_up` | gauge | `status_path` |
-| `sms_openvpn_client_up` | gauge | `status_path` |
+| `sms_openvpn_status_path` | gauge | `status_path,type` |
+| `sms_openvpn_up` | gauge | `type` |
+| `sms_openvpn_server_up` | gauge | `type` |
+| `sms_openvpn_client_up` | gauge | `type` |
 | `sms_openvpn_status_update_time_seconds` | gauge | `type` |
 | `sms_openvpn_server_connected_clients` | gauge | `type` |
 | `sms_openvpn_client_{tun_tap_read,tun_tap_write,tcp_udp_read,tcp_udp_write,auth_read,pre_compress,post_compress,pre_decompress,post_decompress}_bytes_total` | counter | `type` |
@@ -233,10 +235,12 @@ server-only host.
 | `sms_openvpn_server_client_sent_bytes_total` | counter | `type,common_name,connection_time,real_address,virtual_address,username` |
 | `sms_openvpn_server_route_last_reference_time_seconds` | gauge | `type,common_name,real_address,virtual_address` |
 
-The status file path (`status_path`) is labeled only on the `*_up`
-metrics; everywhere else client/server is distinguished by the `type`
-label instead. `sms_openvpn_up` is `1` if the path parsed at all; the
-dedicated `sms_openvpn_server_up` / `sms_openvpn_client_up` are `1` only
+The status file path (`status_path`) is labeled only on the dedicated
+`sms_openvpn_status_path` metric, whose value is `1` when the file
+parsed and `0` otherwise; everywhere else client/server is
+distinguished by the `type` label instead. `sms_openvpn_up` is `1` if
+the path parsed at all; the dedicated `sms_openvpn_server_up` /
+`sms_openvpn_client_up` are `1` only
 when the path parsed as that kind (`0` otherwise, including a parse
 failure), so a single path pinpoints its role.
 
