@@ -48,7 +48,8 @@ webapp/
 │   │   └── runtime.py   #   Runtime (scrape loop, cache, orchestration)
 │   └── handlers/        # drop-in folder for handlers
 │       ├── bash.py      # BashMetricHandler
-│       └── builtin.py   # BuiltinMetricHandler (runtime state, no subprocess)
+│       ├── builtin.py   # BuiltinMetricHandler (runtime state, no subprocess)
+│       └── openvpn.py   # OpenVpnMetricHandler (parses OpenVPN status files)
 └── tests/               # pytest suite, one file per component
 ```
 

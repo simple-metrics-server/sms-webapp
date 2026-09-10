@@ -4,7 +4,12 @@ import time
 import pytest
 
 from webapp.core.helpers import HandlerSupport
-from webapp.core.model import DistributionSample, LabeledSample, Metric
+from webapp.core.model import (
+    DistributionSample,
+    LabeledSample,
+    Metric,
+    MultiLabeledSample,
+)
 
 
 def metric(**kw):
@@ -435,6 +440,52 @@ def test_render_exposition_labeled_escapes_label_value():
 def test_render_exposition_labeled_empty():
     out = HandlerSupport().render_exposition(
         [labeled()], {"test_users": LabeledSample("user", {})}
+    )
+    assert out == (
+        "# HELP test_users Sessions per user\n# TYPE test_users gauge\n\n"
+    )
+
+
+# --- render_exposition: multi-labeled samples ---
+
+
+def test_render_exposition_multi_labeled():
+    out = HandlerSupport().render_exposition(
+        [labeled()],
+        {
+            "test_users": MultiLabeledSample(
+                ["status_path", "common_name"],
+                {
+                    ("a.status", "bob"): "1.0",
+                    ("a.status", "alice"): "2.0",
+                },
+            )
+        },
+    )
+    assert out == (
+        "# HELP test_users Sessions per user\n"
+        "# TYPE test_users gauge\n"
+        'test_users{status_path="a.status",common_name="alice"} 2.0\n'
+        'test_users{status_path="a.status",common_name="bob"} 1.0\n'
+    )
+
+
+def test_render_exposition_multi_labeled_escapes_label_values():
+    out = HandlerSupport().render_exposition(
+        [labeled()],
+        {
+            "test_users": MultiLabeledSample(
+                ["a", "b"], {('x"y', "p\\q"): "1.0"}
+            )
+        },
+    )
+    assert 'test_users{a="x\\"y",b="p\\\\q"} 1.0' in out
+
+
+def test_render_exposition_multi_labeled_empty():
+    out = HandlerSupport().render_exposition(
+        [labeled()],
+        {"test_users": MultiLabeledSample(["user"], {})},
     )
     assert out == (
         "# HELP test_users Sessions per user\n# TYPE test_users gauge\n\n"

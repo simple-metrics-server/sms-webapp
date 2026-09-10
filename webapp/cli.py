@@ -32,7 +32,7 @@ UNIT_NAME = "sms-webapp.service"
 SYSTEM_UNIT_DIR = Path("/etc/systemd/system")
 UNIT_TEMPLATE = """\
 [Unit]
-Description=webapp - Prometheus metrics exporter
+Description=webapp - Prometheus etrics exporter
 Wants=network-online.target
 After=network-online.target
 

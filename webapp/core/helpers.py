@@ -8,6 +8,7 @@ from webapp.core.model import (
     DistributionSample,
     LabeledSample,
     Metric,
+    MultiLabeledSample,
     SampleValue,
 )
 from webapp.core.process import ProcessRunner
@@ -353,6 +354,8 @@ class HandlerSupport:
             return self._render_summary(m, value)
         if isinstance(value, LabeledSample):
             return self._render_labeled(m, value)
+        if isinstance(value, MultiLabeledSample):
+            return self._render_multi_labeled(m, value)
         return f"{m.name} {value}"
 
     def _render_histogram(self, m: Metric, sample: DistributionSample) -> str:
@@ -382,6 +385,19 @@ class HandlerSupport:
             f'{m.name}{{{sample.label_name}="{label(v)}"}} {sample.values[v]}'
             for v in sorted(sample.values)
         )
+
+    def _render_multi_labeled(
+        self, m: Metric, sample: MultiLabeledSample
+    ) -> str:
+        label = self._escape_label_value
+        lines = []
+        for key in sorted(sample.rows):
+            labels = ",".join(
+                f'{name}="{label(v)}"'
+                for name, v in zip(sample.label_names, key, strict=True)
+            )
+            lines.append(f"{m.name}{{{labels}}} {sample.rows[key]}")
+        return "\n".join(lines)
 
     def _escape_help(self, help_text: str) -> str:
         return help_text.replace("\\", "\\\\").replace("\n", "\\n")

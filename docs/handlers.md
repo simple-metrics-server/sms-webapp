@@ -166,8 +166,12 @@ sms_bash_lat_count 3.0
 `execute()` may return a `LabeledSample(label_name, values)` for a
 metric — one `name{label="value"} number` line per entry, sorted by
 label value, label values escaped. The builtin handler uses this for
-per-user session counts; see `webapp.core.model.SampleValue` for the
-full result union (`str | DistributionSample | LabeledSample`).
+per-user session counts. `MultiLabeledSample(label_names, rows)` does
+the same across several label dimensions: `rows` maps a label value
+tuple (in `label_names` order) to a value, and each row renders as
+`name{k1="v1",k2="v2"} number`. See `webapp.core.model.SampleValue`
+for the full result union
+(`str | DistributionSample | LabeledSample | MultiLabeledSample`).
 
 ## The shipped handlers
 
@@ -182,6 +186,37 @@ Config: `data/config/bash.json`.
 `BuiltinMetricHandler` does not spawn a process per metric; its `cmd`
 names a builtin provider (runtime state, OS probes, hardware). See
 [builtin commands](builtin-commands.md) for the full reference.
+
+### openvpn — `webapp/handlers/openvpn.py`
+
+`OpenVpnMetricHandler` reads one or more OpenVPN `--status` files.
+Here `cmd` holds the **space-separated path(s)** of the status files
+(no process is spawned). Client status files and server status files
+(`--status-version 2` and 3) are auto-detected and parsed the same
+way as the discontinued
+[kumina/openvpn_exporter](https://github.com/kumina/openvpn_exporter);
+the exposed families mirror it, with the repository's `sms_` prefix.
+Rows are labeled with `status_path` (plus per-client/per-route labels
+for the server families).
+
+Metric names are a fixed schema — the handler only recognises the
+names below (config entries with any other name are rejected by
+`verify()`). A missing, unreadable or malformed status file reports
+`sms_openvpn_up{status_path}` `0.0` and yields no other samples for
+that path (only the problem is logged); it never fails the cycle.
+
+| metric | type | labels |
+|--------|------|--------|
+| `sms_openvpn_up` | gauge | `status_path` |
+| `sms_openvpn_status_update_time_seconds` | gauge | `status_path` |
+| `sms_openvpn_server_connected_clients` | gauge | `status_path` |
+| `sms_openvpn_client_{tun_tap_read,tun_tap_write,tcp_udp_read,tcp_udp_write,auth_read,pre_compress,post_compress,pre_decompress,post_decompress}_bytes_total` | counter | `status_path` |
+| `sms_openvpn_server_client_received_bytes_total` | counter | `status_path,common_name,connection_time,real_address,virtual_address,username` |
+| `sms_openvpn_server_client_sent_bytes_total` | counter | `status_path,common_name,connection_time,real_address,virtual_address,username` |
+| `sms_openvpn_server_route_last_reference_time_seconds` | gauge | `status_path,common_name,real_address,virtual_address` |
+
+Config: `data/config/openvpn.json` (defaults to
+`/etc/openvpn/openvpn-status.log`).
 
 ## Testing a new handler
 

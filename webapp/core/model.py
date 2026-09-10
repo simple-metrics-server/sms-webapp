@@ -39,5 +39,19 @@ class LabeledSample:
     values: dict[str, str]
 
 
-SampleValue = str | DistributionSample | LabeledSample
+@dataclass
+class MultiLabeledSample:
+    """A scalar family split across several label dimensions.
+
+    label_names is the ordered tuple of label keys; rows maps a label
+    value tuple (in the same order as label_names) to its canonical
+    float string. Renders as `name{k1="v1",k2="v2"} value` per row
+    (empty rows render no samples).
+    """
+
+    label_names: list[str]
+    rows: dict[tuple[str, ...], str]
+
+
+SampleValue = str | DistributionSample | LabeledSample | MultiLabeledSample
 """A value a handler's execute() may produce for one metric."""
