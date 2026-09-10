@@ -351,8 +351,9 @@ discontinued kumina/openvpn_exporter (metrics prefixed
 Unlike bash, its config `cmd` holds the
 **status file path(s)** as a JSON array (a space-separated string is
 also accepted), not a command line; no
-subprocess runs. The env var `OPENVPN_STATUS_PATH` (JSON array or
-space-separated) overrides the paths from the config at scrape time. Data rows carry a
+subprocess runs. The env var `OPENVPN_STATUS_PATH` (JSON array,
+bracketed/comma-separated list, or space-separated) overrides the
+paths from the config at scrape time. Data rows carry a
 `type` label (`client`/`server`/`unknown`) distinguishing the detected
 status-file kind; `sms_openvpn_up` tracks parse success while
 `sms_openvpn_server_up` / `sms_openvpn_client_up` report the detected

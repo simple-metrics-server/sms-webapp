@@ -243,9 +243,10 @@ Config: `data/config/openvpn.json` (defaults to
 
 Setting the `OPENVPN_STATUS_PATH` env var overrides the paths from the
 config at scrape time, so an install can point the shipped config at
-its status files without editing all entries. It accepts a **JSON
-array** of paths or a single space-separated string. Unset/empty means
-the config `cmd` values are used.
+its status files without editing all entries. It accepts a JSON array,
+a bracketed list (`[a, b]` / `['a', 'b']`), a comma-separated list, or
+a single space-separated string. Unset/empty means the config `cmd`
+values are used.
 
 For a host whose status file lives at a non-standard path, either edit
 the `cmd` of every entry in `data/config/openvpn.json`, or (recommended

@@ -115,25 +115,46 @@ class ParsedStatus:
     error: str | None = None
 
 
+def _parse_path_string(raw: str) -> list[str]:
+    """Split a status path spec into individual paths.
+
+    Accepts a JSON array (`["a", "b"]`), a bracketed list with or
+    without quotes (`[a, b]`, `['a', 'b']`), a comma-separated list, or
+    a plain space-separated string (shell quoting supported).
+    """
+    text = raw.strip()
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = None
+    if isinstance(parsed, list):
+        return [str(path) for path in parsed]
+    if text.startswith("[") and text.endswith("]"):
+        parts = text[1:-1].split(",")
+    elif "," in text:
+        parts = text.split(",")
+    else:
+        return shlex.split(text)
+    return [_strip_quotes(part.strip()) for part in parts if part.strip()]
+
+
+def _strip_quotes(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
+
+
 def _paths(m: Metric) -> list[str]:
-    return shlex.split(m.cmd)
+    if isinstance(m.cmd, list):
+        return [str(path) for path in m.cmd]
+    return _parse_path_string(m.cmd)
 
 
 def _status_path_override() -> list[str]:
-    """Paths from the OPENVPN_STATUS_PATH env var, empty when unset.
-
-    Accepts a JSON array of paths or a single space-separated string.
-    """
-    raw = os.environ.get(STATUS_PATH_ENV, "").strip()
-    if not raw:
-        return []
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        return shlex.split(raw)
-    if isinstance(parsed, list):
-        return [str(path) for path in parsed]
-    return shlex.split(raw)
+    """Paths from the OPENVPN_STATUS_PATH env var, empty when unset."""
+    return _parse_path_string(os.environ.get(STATUS_PATH_ENV, ""))
 
 
 def _timeout_for(
