@@ -71,7 +71,6 @@ _SERVER_METRIC_COLUMNS = frozenset(
 )
 
 _SERVER_CLIENT_LABELS = [
-    STATUS_PATH_LABEL,
     TYPE_LABEL,
     "common_name",
     "connection_time",
@@ -87,7 +86,6 @@ _SERVER_CLIENT_COLUMNS = [
     "Username",
 ]
 _ROUTE_LABELS = [
-    STATUS_PATH_LABEL,
     TYPE_LABEL,
     "common_name",
     "real_address",
@@ -492,22 +490,21 @@ class OpenVpnMetricHandler(MetricHandler):
             )
         if m.name == STATUS_UPDATE_TIME:
             return MultiLabeledSample(
-                [STATUS_PATH_LABEL, TYPE_LABEL],
+                [TYPE_LABEL],
                 {
-                    (path, st.kind): st.update_time
-                    for path, st in parsed.items()
+                    (st.kind,): st.update_time
+                    for st in parsed.values()
                     if not st.error and st.update_time is not None
                 },
             )
         if m.name == CONNECTED_CLIENTS:
-            return MultiLabeledSample(
-                [STATUS_PATH_LABEL, TYPE_LABEL],
-                {
-                    (path, TYPE_SERVER): repr(float(st.connected_clients))
-                    for path, st in parsed.items()
-                    if st.kind == TYPE_SERVER and not st.error
-                },
-            )
+            connected: dict[tuple[str, ...], str] = {}
+            for status in parsed.values():
+                if status.kind == TYPE_SERVER and not status.error:
+                    connected[(TYPE_SERVER,)] = repr(
+                        float(status.connected_clients)
+                    )
+            return MultiLabeledSample([TYPE_LABEL], connected)
         if m.name == ROUTE_METRIC:
             return MultiLabeledSample(
                 _ROUTE_LABELS,
@@ -530,14 +527,15 @@ class OpenVpnMetricHandler(MetricHandler):
                 ),
             )
         key = CLIENT_COUNTERS[m.name]
-        return MultiLabeledSample(
-            [STATUS_PATH_LABEL, TYPE_LABEL],
-            {
-                (path, TYPE_CLIENT): st.client[key]
-                for path, st in parsed.items()
-                if st.kind == TYPE_CLIENT and not st.error and key in st.client
-            },
-        )
+        counters: dict[tuple[str, ...], str] = {}
+        for status in parsed.values():
+            if (
+                status.kind == TYPE_CLIENT
+                and not status.error
+                and key in status.client
+            ):
+                counters[(TYPE_CLIENT,)] = status.client[key]
+        return MultiLabeledSample([TYPE_LABEL], counters)
 
     def _rows(
         self,
@@ -547,7 +545,7 @@ class OpenVpnMetricHandler(MetricHandler):
         value_column: str,
     ) -> dict[tuple[str, ...], str]:
         rows: dict[tuple[str, ...], str] = {}
-        for path, status in parsed.items():
+        for status in parsed.values():
             if status.kind != TYPE_SERVER or status.error:
                 continue
             for row in getattr(status, attr):
@@ -555,7 +553,6 @@ class OpenVpnMetricHandler(MetricHandler):
                 if value is None:
                     continue
                 label_key = (
-                    path,
                     TYPE_SERVER,
                     *(row.get(c, "") for c in label_columns),
                 )

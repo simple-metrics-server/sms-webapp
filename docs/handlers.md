@@ -204,10 +204,10 @@ discontinued
 version-1 rows are normalized to the same shape — timestamps converted
 to epoch, and columns the format lacks (`virtual_address`, `username`)
 left empty. The exposed families mirror kumina, with the repository's
-`sms_` prefix. Rows carry a `status_path` label plus a `type` label
-whose value is `client` or `server` (the detected status-file kind;
-`unknown` when the file could not be parsed), so client- and
-server-sourced data can be told apart.
+`sms_` prefix. The `*_up` metrics carry a `status_path` label; the data
+metrics carry a `type` label whose value is `client` or `server` (the
+detected status-file kind), so client- and server-sourced data can be
+told apart without the logfile path.
 
 Metric names are a fixed schema — the handler only recognises the
 names below (config entries with any other name are rejected by
@@ -226,17 +226,19 @@ server-only host.
 | `sms_openvpn_up` | gauge | `status_path,type` |
 | `sms_openvpn_server_up` | gauge | `status_path` |
 | `sms_openvpn_client_up` | gauge | `status_path` |
-| `sms_openvpn_status_update_time_seconds` | gauge | `status_path,type` |
-| `sms_openvpn_server_connected_clients` | gauge | `status_path,type` |
-| `sms_openvpn_client_{tun_tap_read,tun_tap_write,tcp_udp_read,tcp_udp_write,auth_read,pre_compress,post_compress,pre_decompress,post_decompress}_bytes_total` | counter | `status_path,type` |
-| `sms_openvpn_server_client_received_bytes_total` | counter | `status_path,type,common_name,connection_time,real_address,virtual_address,username` |
-| `sms_openvpn_server_client_sent_bytes_total` | counter | `status_path,type,common_name,connection_time,real_address,virtual_address,username` |
-| `sms_openvpn_server_route_last_reference_time_seconds` | gauge | `status_path,type,common_name,real_address,virtual_address` |
+| `sms_openvpn_status_update_time_seconds` | gauge | `type` |
+| `sms_openvpn_server_connected_clients` | gauge | `type` |
+| `sms_openvpn_client_{tun_tap_read,tun_tap_write,tcp_udp_read,tcp_udp_write,auth_read,pre_compress,post_compress,pre_decompress,post_decompress}_bytes_total` | counter | `type` |
+| `sms_openvpn_server_client_received_bytes_total` | counter | `type,common_name,connection_time,real_address,virtual_address,username` |
+| `sms_openvpn_server_client_sent_bytes_total` | counter | `type,common_name,connection_time,real_address,virtual_address,username` |
+| `sms_openvpn_server_route_last_reference_time_seconds` | gauge | `type,common_name,real_address,virtual_address` |
 
-`sms_openvpn_up` is `1` if the path parsed at all; the dedicated
-`sms_openvpn_server_up` / `sms_openvpn_client_up` are `1` only when the
-path parsed as that kind (`0` otherwise, including a parse failure), so
-a single path pinpoints its role.
+The status file path (`status_path`) is labeled only on the `*_up`
+metrics; everywhere else client/server is distinguished by the `type`
+label instead. `sms_openvpn_up` is `1` if the path parsed at all; the
+dedicated `sms_openvpn_server_up` / `sms_openvpn_client_up` are `1` only
+when the path parsed as that kind (`0` otherwise, including a parse
+failure), so a single path pinpoints its role.
 
 Config: `data/config/openvpn.json` (defaults to
 `/etc/openvpn/openvpn-status.log`).

@@ -138,20 +138,16 @@ def test_client_status(tmp_path):
     out = run_cycle(OpenVpnMetricHandler(cfg))
     assert f'sms_openvpn_up{{status_path="{path}",type="client"}} 1.0' in out
     assert (
-        out.count(
-            "sms_openvpn_status_update_time_seconds"
-            f'{{status_path="{path}",type="client"}}'
-        )
-        == 1
+        out.count('sms_openvpn_status_update_time_seconds{type="client"}') == 1
     )
     assert f" {expected_time()}" in out
     assert (
         "sms_openvpn_client_tun_tap_read_bytes_total"
-        f'{{status_path="{path}",type="client"}} 153789941.0' in out
+        '{type="client"} 153789941.0' in out
     )
     assert (
         "sms_openvpn_client_auth_read_bytes_total"
-        f'{{status_path="{path}",type="client"}} 308854782.0' in out
+        '{type="client"} 308854782.0' in out
     )
 
 
@@ -174,30 +170,27 @@ def test_server_status(tmp_path, separator):
     assert f'sms_openvpn_up{{status_path="{path}",type="server"}} 1.0' in out
     assert (
         "sms_openvpn_status_update_time_seconds"
-        f'{{status_path="{path}",type="server"}} 1490089154.0' in out
+        '{type="server"} 1490089154.0' in out
     )
-    assert (
-        "sms_openvpn_server_connected_clients"
-        f'{{status_path="{path}",type="server"}} 2.0' in out
-    )
+    assert 'sms_openvpn_server_connected_clients{type="server"} 2.0' in out
     assert (
         "sms_openvpn_server_client_received_bytes_total"
-        f'{{status_path="{path}",type="server",common_name="alice",'
+        '{type="server",common_name="alice",'
         'connection_time="1489680543",'
-        f'real_address="10.0.0.1:19021",virtual_address="10.8.0.2",'
+        'real_address="10.0.0.1:19021",virtual_address="10.8.0.2",'
         'username="UNDEF"} 693438277.0' in out
     )
     assert (
         "sms_openvpn_server_client_sent_bytes_total"
-        f'{{status_path="{path}",type="server",common_name="bob",'
+        '{type="server",common_name="bob",'
         'connection_time="1489680537",'
-        f'real_address="10.0.0.2:60536",virtual_address="10.8.0.3",'
+        'real_address="10.0.0.2:60536",virtual_address="10.8.0.3",'
         'username="user2"} 3145665.0' in out
     )
     assert (
         "sms_openvpn_server_route_last_reference_time_seconds"
-        f'{{status_path="{path}",type="server",common_name="alice",'
-        f'real_address="10.0.0.1:19021",virtual_address="10.8.0.2"}} '
+        '{type="server",common_name="alice",'
+        'real_address="10.0.0.1:19021",virtual_address="10.8.0.2"} '
         "1490088408.0" in out
     )
 
@@ -220,30 +213,27 @@ def test_server_status_v1(tmp_path):
     assert f'sms_openvpn_up{{status_path="{path}",type="server"}} 1.0' in out
     assert (
         "sms_openvpn_status_update_time_seconds"
-        f'{{status_path="{path}",type="server"}} '
+        '{type="server"} '
         f"{iso_epoch('2026-09-10 21:51:57')}" in out
     )
-    assert (
-        "sms_openvpn_server_connected_clients"
-        f'{{status_path="{path}",type="server"}} 2.0' in out
-    )
+    assert 'sms_openvpn_server_connected_clients{type="server"} 2.0' in out
     assert (
         "sms_openvpn_server_client_received_bytes_total"
-        f'{{status_path="{path}",type="server",common_name="barbossa",'
+        '{type="server",common_name="barbossa",'
         f'connection_time="{iso_epoch("2026-09-10 20:53:10")}",'
         f'real_address="128.0.145.8:38072",virtual_address="",'
         'username=""} 1498074.0' in out
     )
     assert (
         "sms_openvpn_server_client_sent_bytes_total"
-        f'{{status_path="{path}",type="server",common_name="blackbeard",'
+        '{type="server",common_name="blackbeard",'
         f'connection_time="{iso_epoch("2026-09-10 20:52:31")}",'
         f'real_address="194.163.136.152:54191",virtual_address="",'
         'username=""} 1496111.0' in out
     )
     assert (
         "sms_openvpn_server_route_last_reference_time_seconds"
-        f'{{status_path="{path}",type="server",common_name="barbossa",'
+        '{type="server",common_name="barbossa",'
         'real_address="128.0.145.8:38072",'
         f'virtual_address="5a:c9:06:2e:2e:2b@0"}} '
         f"{iso_epoch('2026-09-10 21:51:52')}" in out
@@ -358,7 +348,7 @@ def test_env_override_uses_path(tmp_path, monkeypatch):
     assert missing not in out
     assert (
         "sms_openvpn_client_tun_tap_read_bytes_total"
-        f'{{status_path="{real}",type="client"}} 153789941.0' in out
+        '{type="client"} 153789941.0' in out
     )
 
 
