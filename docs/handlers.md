@@ -191,19 +191,31 @@ names a builtin provider (runtime state, OS probes, hardware). See
 
 `OpenVpnMetricHandler` reads one or more OpenVPN `--status` files.
 Here `cmd` holds the **space-separated path(s)** of the status files
-(no process is spawned). Client status files and server status files
-(`--status-version 2` and 3) are auto-detected and parsed the same
-way as the discontinued
+(no process is spawned). The format is auto-detected from the file's
+first line, so no configuration is needed to pick one:
+
+- `OpenVPN CLIENT LIST` — classic status format (version 1)
+- `TITLE,` / `TITLE<tab>` — server `--status-version 2` / 3
+
+(plus the client `OpenVPN STATISTICS` file). Server parsing mirrors the
+discontinued
 [kumina/openvpn_exporter](https://github.com/kumina/openvpn_exporter);
-the exposed families mirror it, with the repository's `sms_` prefix.
-Rows are labeled with `status_path` (plus per-client/per-route labels
-for the server families).
+version-1 rows are normalized to the same shape — timestamps converted
+to epoch, and columns the format lacks (`virtual_address`, `username`)
+left empty. The exposed families mirror kumina, with the repository's
+`sms_` prefix. Rows are labeled with `status_path` (plus
+per-client/per-route labels for the server families).
 
 Metric names are a fixed schema — the handler only recognises the
 names below (config entries with any other name are rejected by
 `verify()`). A missing, unreadable or malformed status file reports
 `sms_openvpn_up{status_path}` `0.0` and yields no other samples for
 that path (only the problem is logged); it never fails the cycle.
+
+A status file is either client or server format, so families that
+produced no samples for any configured path are omitted entirely (no
+HELP/TYPE-only block) — e.g. the `sms_openvpn_client_*` counters on a
+server-only host.
 
 | metric | type | labels |
 |--------|------|--------|

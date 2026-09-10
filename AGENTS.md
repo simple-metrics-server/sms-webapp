@@ -344,9 +344,11 @@ by label value, label values escaped), or a
 ## OpenVPN handler
 
 `OpenVpnMetricHandler` (`webapp/handlers/openvpn.py`) parses OpenVPN
-`--status` files — client stats and server `--status-version 2`/`3` —
-mirroring the discontinued kumina/openvpn_exporter (metrics prefixed
-`sms_openvpn_`). Unlike bash, its config `cmd` holds the
+`--status` files — the classic `OpenVPN CLIENT LIST` (version 1),
+client stats and server `--status-version 2`/`3` — mirroring the
+discontinued kumina/openvpn_exporter (metrics prefixed
+`sms_openvpn_`). The format is auto-detected from the first line.
+Unlike bash, its config `cmd` holds the
 **space-separated status file path(s)**, not a command line; no
 subprocess runs. The env var `OPENVPN_STATUS_PATH` (space-separated)
 overrides the paths from the config at scrape time. A missing,

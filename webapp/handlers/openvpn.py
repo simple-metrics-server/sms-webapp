@@ -126,21 +126,39 @@ def _read_file(path: str) -> str:
         return f.read()
 
 
+def _is_empty_sample(value: SampleValue) -> bool:
+    """True for a labeled family with no rows (nothing to expose)."""
+    if isinstance(value, LabeledSample):
+        return not value.values
+    if isinstance(value, MultiLabeledSample):
+        return not value.rows
+    return False
+
+
 def _asctime_to_epoch(value: str) -> str:
+    """Parse an OpenVPN timestamp (ISO 8601 or asctime) as local time."""
     normalized = " ".join(value.split())
-    parsed = time.strptime(normalized, "%a %b %d %H:%M:%S %Y")
-    return repr(float(time.mktime(parsed)))
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%a %b %d %H:%M:%S %Y"):
+        try:
+            parsed = time.strptime(normalized, fmt)
+        except ValueError:
+            continue
+        return repr(float(time.mktime(parsed)))
+    raise ValueError(f"unrecognized timestamp {value!r}")
 
 
 class OpenVpnMetricHandler(MetricHandler):
     """Handler that parses OpenVPN status files.
 
     Each metric's `cmd` holds the space-separated path(s) of the
-    OpenVPN `--status` file(s) to read. Client status files and server
-    status files (--status-version 2 and 3) are auto-detected and
-    parsed the same way as the kumina/openvpn_exporter. Metric names
-    select the data; the exposed families mirror that exporter (with
-    the repository's `sms_` prefix).
+    OpenVPN `--status` file(s) to read. The format is auto-detected
+    from the file's first line: the classic `OpenVPN CLIENT LIST`
+    (status version 1), server `--status-version 2` and 3, and client
+    statistics are all supported. Server parsing mirrors the
+    kumina/openvpn_exporter; version 1 rows are normalized to the same
+    shape (timestamps converted to epoch, absent columns left empty).
+    Metric names select the data; the exposed families mirror that
+    exporter (with the repository's `sms_` prefix).
 
     A status file that is missing, unreadable or malformed reports
     `sms_openvpn_up{status_path}=0` and yields no other samples for
@@ -180,6 +198,23 @@ class OpenVpnMetricHandler(MetricHandler):
             parsed[path] = await self._parse_path(path, timeout)
         return self._collect(metrics, parsed)
 
+    async def finalize(
+        self,
+        metrics: list[Metric],
+        results: dict[str, SampleValue],
+    ) -> str:
+        """Render only the families that actually produced samples.
+
+        A status file is either client or server format, so the
+        configured families for the other kind have no rows. Emitting
+        their HELP/TYPE with no samples is noise; drop them instead.
+        """
+        missing = [m.name for m in metrics if m.name not in results]
+        if missing:
+            raise ValueError(f"No results for metrics: {missing}")
+        kept = [m for m in metrics if not _is_empty_sample(results[m.name])]
+        return self.support.render_exposition(kept, results)
+
     async def _parse_path(self, path: str, timeout: float) -> ParsedStatus:
         try:
             text = await asyncio.wait_for(
@@ -200,6 +235,8 @@ class OpenVpnMetricHandler(MetricHandler):
             return self._parse_server(text, ",")
         if first.startswith("TITLE\t"):
             return self._parse_server(text, "\t")
+        if first.startswith("OpenVPN CLIENT LIST"):
+            return self._parse_server_v1(text)
         if first.startswith("OpenVPN STATISTICS"):
             return self._parse_client(text)
         raise ValueError(f"unexpected file contents: {first[:40]!r}")
@@ -247,28 +284,101 @@ class OpenVpnMetricHandler(MetricHandler):
             if key == "CLIENT_LIST":
                 parsed.connected_clients += 1
                 parsed.server_clients.append(
-                    self._server_row(fields, headers.get("CLIENT_LIST"))
+                    self._server_row(
+                        fields, headers.get("CLIENT_LIST"), 1, "CLIENT_LIST"
+                    )
                 )
                 continue
             if key == "ROUTING_TABLE":
                 parsed.server_routes.append(
-                    self._server_row(fields, headers.get("ROUTING_TABLE"))
+                    self._server_row(
+                        fields, headers.get("ROUTING_TABLE"), 1, "ROUTING_TABLE"
+                    )
                 )
                 continue
             raise ValueError(f"unsupported key {key!r}")
         return parsed
 
-    def _server_row(
-        self, fields: list[str], columns: list[str] | None
+    def _parse_server_v1(self, text: str) -> ParsedStatus:
+        """Parse the classic `OpenVPN CLIENT LIST` status format.
+
+        This format has no HEADER directives; column names appear as the
+        section's first row and rows have no table-name prefix. Rows are
+        normalized to the same shape as the v2/v3 format: timestamps are
+        converted to epoch and missing columns (virtual address,
+        username) are left empty.
+        """
+        parsed = ParsedStatus(kind="server")
+        section: str | None = None
+        header: list[str] | None = None
+        for line in text.splitlines():
+            if not line:
+                continue
+            fields = line.split(",")
+            key = fields[0]
+            if key == "OpenVPN CLIENT LIST":
+                section, header = None, None
+                continue
+            if key == "ROUTING TABLE":
+                section, header = "routing", None
+                continue
+            if key == "GLOBAL STATS":
+                section, header = "global", None
+                continue
+            if key == "END":
+                continue
+            if key == "Updated" and len(fields) == 2:
+                parsed.update_time = _asctime_to_epoch(fields[1])
+                continue
+            if section == "global":
+                continue
+            if header is None:
+                header = fields
+                if section is None:
+                    section = "client"
+                continue
+            if section == "client":
+                parsed.connected_clients += 1
+                parsed.server_clients.append(
+                    self._server_row_v1(fields, header, "CLIENT_LIST")
+                )
+                continue
+            if section == "routing":
+                parsed.server_routes.append(
+                    self._server_row_v1(fields, header, "ROUTING_TABLE")
+                )
+                continue
+            raise ValueError(f"unsupported key {key!r}")
+        return parsed
+
+    def _server_row_v1(
+        self, fields: list[str], columns: list[str], table: str
     ) -> dict[str, str]:
-        table = fields[0]
+        row = self._server_row(fields, columns, 0, table)
+        since = row.get("Connected Since")
+        if since:
+            row["Connected Since (time_t)"] = _asctime_to_epoch(since)
+        last_ref = row.get("Last Ref")
+        if last_ref:
+            row["Last Ref (time_t)"] = _asctime_to_epoch(last_ref)
+        row.setdefault("Virtual Address", "")
+        row.setdefault("Username", "")
+        return row
+
+    def _server_row(
+        self,
+        fields: list[str],
+        columns: list[str] | None,
+        offset: int,
+        table: str,
+    ) -> dict[str, str]:
         if columns is None:
             raise ValueError(f"{table} should be preceded by HEADER")
-        if len(fields) != len(columns) + 1:
+        if len(fields) != len(columns) + offset:
             raise ValueError(
                 f"HEADER for {table} describes a different number of columns"
             )
-        row = {columns[i]: fields[i + 1] for i in range(len(columns))}
+        row = {columns[i]: fields[i + offset] for i in range(len(columns))}
         for column in _SERVER_METRIC_COLUMNS & row.keys():
             row[column] = self.support.parse_value("openvpn", row[column])
         return row

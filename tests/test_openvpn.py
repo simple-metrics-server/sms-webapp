@@ -55,6 +55,21 @@ SERVER_ROWS = [
 ]
 
 
+SERVER_V1_STATUS = """OpenVPN CLIENT LIST
+Updated,2026-09-10 21:51:57
+Common Name,Real Address,Bytes Received,Bytes Sent,Connected Since
+barbossa,128.0.145.8:38072,1498074,1100680,2026-09-10 20:53:10
+blackbeard,194.163.136.152:54191,1104293,1496111,2026-09-10 20:52:31
+ROUTING TABLE
+Virtual Address,Common Name,Real Address,Last Ref
+5a:c9:06:2e:2e:2b@0,barbossa,128.0.145.8:38072,2026-09-10 21:51:52
+d6:6c:59:45:36:72@0,blackbeard,194.163.136.152:54191,2026-09-10 21:51:52
+GLOBAL STATS
+Max bcast/mcast queue length,2
+END
+"""
+
+
 def write(tmp_path, name, text):
     p = tmp_path / name
     p.write_text(text, encoding="utf-8")
@@ -98,6 +113,11 @@ def server_text(separator):
 
 def expected_time():
     parsed = time.strptime("Tue Mar 21 10:39:09 2017", "%a %b %d %H:%M:%S %Y")
+    return repr(float(time.mktime(parsed)))
+
+
+def iso_epoch(value):
+    parsed = time.strptime(value, "%Y-%m-%d %H:%M:%S")
     return repr(float(time.mktime(parsed)))
 
 
@@ -175,6 +195,86 @@ def test_server_status(tmp_path, separator):
         f'real_address="10.0.0.1:19021",virtual_address="10.8.0.2"}} '
         "1490088408.0" in out
     )
+
+
+def test_server_status_v1(tmp_path):
+    path = write(tmp_path, "server-v1.status", SERVER_V1_STATUS)
+    cfg = make_config(
+        tmp_path,
+        [
+            UP,
+            STATUS_UPDATE_TIME,
+            CONNECTED_CLIENTS,
+            "sms_openvpn_server_client_received_bytes_total",
+            "sms_openvpn_server_client_sent_bytes_total",
+            ROUTE_METRIC,
+        ],
+        [path],
+    )
+    out = run_cycle(OpenVpnMetricHandler(cfg))
+    assert f'sms_openvpn_up{{status_path="{path}"}} 1.0' in out
+    assert (
+        f'sms_openvpn_status_update_time_seconds{{status_path="{path}"}} '
+        f"{iso_epoch('2026-09-10 21:51:57')}" in out
+    )
+    assert (
+        f'sms_openvpn_server_connected_clients{{status_path="{path}"}} 2.0'
+        in out
+    )
+    assert (
+        "sms_openvpn_server_client_received_bytes_total"
+        f'{{status_path="{path}",common_name="barbossa",'
+        f'connection_time="{iso_epoch("2026-09-10 20:53:10")}",'
+        f'real_address="128.0.145.8:38072",virtual_address="",'
+        'username=""} 1498074.0' in out
+    )
+    assert (
+        "sms_openvpn_server_client_sent_bytes_total"
+        f'{{status_path="{path}",common_name="blackbeard",'
+        f'connection_time="{iso_epoch("2026-09-10 20:52:31")}",'
+        f'real_address="194.163.136.152:54191",virtual_address="",'
+        'username=""} 1496111.0' in out
+    )
+    assert (
+        "sms_openvpn_server_route_last_reference_time_seconds"
+        f'{{status_path="{path}",common_name="barbossa",'
+        'real_address="128.0.145.8:38072",'
+        f'virtual_address="5a:c9:06:2e:2e:2b@0"}} '
+        f"{iso_epoch('2026-09-10 21:51:52')}" in out
+    )
+
+
+def test_empty_families_are_omitted(tmp_path):
+    server = write(tmp_path, "server.status", server_text(","))
+    client = write(tmp_path, "client.status", CLIENT_STATUS)
+    cfg = make_config(
+        tmp_path,
+        [
+            UP,
+            CONNECTED_CLIENTS,
+            "sms_openvpn_client_tun_tap_read_bytes_total",
+            "sms_openvpn_server_client_received_bytes_total",
+        ],
+        [server],
+    )
+    out = run_cycle(OpenVpnMetricHandler(cfg))
+    assert "sms_openvpn_client_tun_tap_read_bytes_total" not in out
+    assert "sms_openvpn_server_client_received_bytes_total" in out
+
+    cfg_client = make_config(
+        tmp_path,
+        [
+            UP,
+            CONNECTED_CLIENTS,
+            "sms_openvpn_client_tun_tap_read_bytes_total",
+            "sms_openvpn_server_client_received_bytes_total",
+        ],
+        [client],
+    )
+    out_client = run_cycle(OpenVpnMetricHandler(cfg_client))
+    assert "sms_openvpn_client_tun_tap_read_bytes_total" in out_client
+    assert "sms_openvpn_server_client_received_bytes_total" not in out_client
+    assert "sms_openvpn_server_connected_clients" not in out_client
 
 
 def test_missing_file_reports_up_zero(tmp_path):
