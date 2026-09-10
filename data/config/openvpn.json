@@ -3,119 +3,119 @@
         "name": "sms_openvpn_up",
         "help_text": "Whether the OpenVPN status file could be parsed",
         "value_type": "gauge",
-        "cmd": "/etc/openvpn/openvpn-status.log",
+        "cmd": ["/etc/openvpn/openvpn-status.log"],
         "timeout": 5
     },
     {
         "name": "sms_openvpn_server_up",
         "help_text": "1 if the OpenVPN status file was parsed as a server",
         "value_type": "gauge",
-        "cmd": "/etc/openvpn/openvpn-status.log",
+        "cmd": ["/etc/openvpn/openvpn-status.log"],
         "timeout": 5
     },
     {
         "name": "sms_openvpn_client_up",
         "help_text": "1 if the OpenVPN status file was parsed as a client",
         "value_type": "gauge",
-        "cmd": "/etc/openvpn/openvpn-status.log",
+        "cmd": ["/etc/openvpn/openvpn-status.log"],
         "timeout": 5
     },
     {
         "name": "sms_openvpn_status_update_time_seconds",
         "help_text": "UNIX timestamp at which the OpenVPN statistics were updated",
         "value_type": "gauge",
-        "cmd": "/etc/openvpn/openvpn-status.log",
+        "cmd": ["/etc/openvpn/openvpn-status.log"],
         "timeout": 5
     },
     {
         "name": "sms_openvpn_server_connected_clients",
         "help_text": "Number of connected clients",
         "value_type": "gauge",
-        "cmd": "/etc/openvpn/openvpn-status.log",
+        "cmd": ["/etc/openvpn/openvpn-status.log"],
         "timeout": 5
     },
     {
         "name": "sms_openvpn_client_tun_tap_read_bytes_total",
         "help_text": "Total amount of TUN/TAP traffic read, in bytes",
         "value_type": "counter",
-        "cmd": "/etc/openvpn/openvpn-status.log",
+        "cmd": ["/etc/openvpn/openvpn-status.log"],
         "timeout": 5
     },
     {
         "name": "sms_openvpn_client_tun_tap_write_bytes_total",
         "help_text": "Total amount of TUN/TAP traffic written, in bytes",
         "value_type": "counter",
-        "cmd": "/etc/openvpn/openvpn-status.log",
+        "cmd": ["/etc/openvpn/openvpn-status.log"],
         "timeout": 5
     },
     {
         "name": "sms_openvpn_client_tcp_udp_read_bytes_total",
         "help_text": "Total amount of TCP/UDP traffic read, in bytes",
         "value_type": "counter",
-        "cmd": "/etc/openvpn/openvpn-status.log",
+        "cmd": ["/etc/openvpn/openvpn-status.log"],
         "timeout": 5
     },
     {
         "name": "sms_openvpn_client_tcp_udp_write_bytes_total",
         "help_text": "Total amount of TCP/UDP traffic written, in bytes",
         "value_type": "counter",
-        "cmd": "/etc/openvpn/openvpn-status.log",
+        "cmd": ["/etc/openvpn/openvpn-status.log"],
         "timeout": 5
     },
     {
         "name": "sms_openvpn_client_auth_read_bytes_total",
         "help_text": "Total amount of authentication traffic read, in bytes",
         "value_type": "counter",
-        "cmd": "/etc/openvpn/openvpn-status.log",
+        "cmd": ["/etc/openvpn/openvpn-status.log"],
         "timeout": 5
     },
     {
         "name": "sms_openvpn_client_pre_compress_bytes_total",
         "help_text": "Total amount of data before compression, in bytes",
         "value_type": "counter",
-        "cmd": "/etc/openvpn/openvpn-status.log",
+        "cmd": ["/etc/openvpn/openvpn-status.log"],
         "timeout": 5
     },
     {
         "name": "sms_openvpn_client_post_compress_bytes_total",
         "help_text": "Total amount of data after compression, in bytes",
         "value_type": "counter",
-        "cmd": "/etc/openvpn/openvpn-status.log",
+        "cmd": ["/etc/openvpn/openvpn-status.log"],
         "timeout": 5
     },
     {
         "name": "sms_openvpn_client_pre_decompress_bytes_total",
         "help_text": "Total amount of data before decompression, in bytes",
         "value_type": "counter",
-        "cmd": "/etc/openvpn/openvpn-status.log",
+        "cmd": ["/etc/openvpn/openvpn-status.log"],
         "timeout": 5
     },
     {
         "name": "sms_openvpn_client_post_decompress_bytes_total",
         "help_text": "Total amount of data after decompression, in bytes",
         "value_type": "counter",
-        "cmd": "/etc/openvpn/openvpn-status.log",
+        "cmd": ["/etc/openvpn/openvpn-status.log"],
         "timeout": 5
     },
     {
         "name": "sms_openvpn_server_client_received_bytes_total",
         "help_text": "Amount of data received over a connection on the VPN server, in bytes",
         "value_type": "counter",
-        "cmd": "/etc/openvpn/openvpn-status.log",
+        "cmd": ["/etc/openvpn/openvpn-status.log"],
         "timeout": 5
     },
     {
         "name": "sms_openvpn_server_client_sent_bytes_total",
         "help_text": "Amount of data sent over a connection on the VPN server, in bytes",
         "value_type": "counter",
-        "cmd": "/etc/openvpn/openvpn-status.log",
+        "cmd": ["/etc/openvpn/openvpn-status.log"],
         "timeout": 5
     },
     {
         "name": "sms_openvpn_server_route_last_reference_time_seconds",
         "help_text": "Time at which a route was last referenced, in seconds",
         "value_type": "gauge",
-        "cmd": "/etc/openvpn/openvpn-status.log",
+        "cmd": ["/etc/openvpn/openvpn-status.log"],
         "timeout": 5
     }
 ]

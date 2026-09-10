@@ -190,9 +190,10 @@ names a builtin provider (runtime state, OS probes, hardware). See
 ### openvpn — `webapp/handlers/openvpn.py`
 
 `OpenVpnMetricHandler` reads one or more OpenVPN `--status` files.
-Here `cmd` holds the **space-separated path(s)** of the status files
-(no process is spawned). The format is auto-detected from the file's
-first line, so no configuration is needed to pick one:
+Here `cmd` holds the status file path(s) as a **JSON array of paths**
+(no process is spawned); a single space-separated string is also
+accepted for backward compatibility. The format is auto-detected from
+the file's first line, so no configuration is needed to pick one:
 
 - `OpenVPN CLIENT LIST` — classic status format (version 1)
 - `TITLE,` / `TITLE<tab>` — server `--status-version 2` / 3
@@ -240,28 +241,32 @@ a single path pinpoints its role.
 Config: `data/config/openvpn.json` (defaults to
 `/etc/openvpn/openvpn-status.log`).
 
-Setting the `OPENVPN_STATUS_PATH` env var (space-separated paths)
-overrides the paths from the config at scrape time, so an install can
-point the shipped config at its status file without editing all
-entries. Unset/empty means the config `cmd` values are used. `shlex`
-quoting applies, so a path containing spaces can be single-quoted.
+Setting the `OPENVPN_STATUS_PATH` env var overrides the paths from the
+config at scrape time, so an install can point the shipped config at
+its status files without editing all entries. It accepts a **JSON
+array** of paths or a single space-separated string. Unset/empty means
+the config `cmd` values are used.
 
 For a host whose status file lives at a non-standard path, either edit
 the `cmd` of every entry in `data/config/openvpn.json`, or (recommended
 for installs) set the env var once — both accept multiple files:
 
+```json
+"cmd": ["/etc/openvpn/status/server.log", "/etc/openvpn/status/client.log"]
+```
+
 ```bash
 # single non-standard file, foreground CLI
 OPENVPN_STATUS_PATH=/var/lib/openvpn/status/server.log just start
 
-# several files (space-separated)
-OPENVPN_STATUS_PATH="/etc/openvpn/status/a.log /etc/openvpn/status/b.log" \
+# several files as a JSON array
+OPENVPN_STATUS_PATH='["/etc/openvpn/status/a.log", "/etc/openvpn/status/b.log"]' \
     just start
 ```
 
 For a persistent service, set it in the service environment, e.g. add
-`Environment=OPENVPN_STATUS_PATH=/var/lib/openvpn/status/server.log` to
-the generated unit (or export it from whatever launches the service).
+`Environment=OPENVPN_STATUS_PATH=["/var/lib/openvpn/status/server.log"]`
+to the generated unit (or export it from whatever launches the service).
 
 ## Testing a new handler
 

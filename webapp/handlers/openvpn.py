@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import shlex
@@ -119,9 +120,20 @@ def _paths(m: Metric) -> list[str]:
 
 
 def _status_path_override() -> list[str]:
-    """Paths from the OPENVPN_STATUS_PATH env var, empty when unset."""
+    """Paths from the OPENVPN_STATUS_PATH env var, empty when unset.
+
+    Accepts a JSON array of paths or a single space-separated string.
+    """
     raw = os.environ.get(STATUS_PATH_ENV, "").strip()
-    return shlex.split(raw) if raw else []
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return shlex.split(raw)
+    if isinstance(parsed, list):
+        return [str(path) for path in parsed]
+    return shlex.split(raw)
 
 
 def _timeout_for(
@@ -162,8 +174,9 @@ def _asctime_to_epoch(value: str) -> str:
 class OpenVpnMetricHandler(MetricHandler):
     """Handler that parses OpenVPN status files.
 
-    Each metric's `cmd` holds the space-separated path(s) of the
-    OpenVPN `--status` file(s) to read. The format is auto-detected
+    Each metric's `cmd` holds the status file path(s) of the OpenVPN
+    `--status` file(s) to read: either a JSON array of paths or a single
+    space-separated string. The format is auto-detected
     from the file's first line: the classic `OpenVPN CLIENT LIST`
     (status version 1), server `--status-version 2` and 3, and client
     statistics are all supported. Server parsing mirrors the
@@ -177,11 +190,26 @@ class OpenVpnMetricHandler(MetricHandler):
     that path (a warning is logged); it never fails the cycle.
 
     When the `OPENVPN_STATUS_PATH` env var is set, it overrides the
-    paths from the config (space-separated), so installs can point the
-    shipped config at their status file without editing every entry.
+    paths from the config (a JSON array or a space-separated string),
+    so installs can point the shipped config at their status files
+    without editing every entry.
     """
 
     required_fields: ClassVar[list[str]] = ["cmd"]
+
+    def _parse(self) -> list[Metric]:
+        """Accept `cmd` as a path list as well as a command-line string.
+
+        A JSON array is joined with shell quoting so the inherited
+        verification and path handling can keep treating `cmd` as a
+        string (paths containing spaces survive the round-trip).
+        """
+        metrics = super()._parse()
+        for metric in metrics:
+            cmd = metric.cmd
+            if isinstance(cmd, list):
+                metric.cmd = shlex.join(str(path) for path in cmd)
+        return metrics
 
     async def verify(self, metrics: list[Metric]) -> None:
         await super().verify(metrics)

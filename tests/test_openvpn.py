@@ -372,6 +372,54 @@ def test_env_override_multiple_paths(tmp_path, monkeypatch):
     assert f'sms_openvpn_up{{status_path="{p2}",type="client"}} 1.0' in out
 
 
+def test_env_override_json_array(tmp_path, monkeypatch):
+    p1 = write(tmp_path, "a.status", CLIENT_STATUS)
+    p2 = write(tmp_path, "b.status", CLIENT_STATUS)
+    cfg = make_config(tmp_path, [UP], [str(tmp_path / "missing.status")])
+    monkeypatch.setenv("OPENVPN_STATUS_PATH", json.dumps([p1, p2]))
+    out = run_cycle(OpenVpnMetricHandler(cfg))
+    assert f'sms_openvpn_up{{status_path="{p1}",type="client"}} 1.0' in out
+    assert f'sms_openvpn_up{{status_path="{p2}",type="client"}} 1.0' in out
+
+
+def test_config_cmd_accepts_path_list(tmp_path):
+    p1 = write(tmp_path, "a.status", CLIENT_STATUS)
+    p2 = write(tmp_path, "b.status", CLIENT_STATUS)
+    metrics = [
+        {
+            "name": UP,
+            "help_text": "help",
+            "value_type": "gauge",
+            "cmd": [p1, p2],
+            "timeout": 5,
+        }
+    ]
+    cfg = tmp_path / "openvpn.json"
+    cfg.write_text(json.dumps(metrics), encoding="utf-8")
+    out = run_cycle(OpenVpnMetricHandler(str(cfg)))
+    assert f'sms_openvpn_up{{status_path="{p1}",type="client"}} 1.0' in out
+    assert f'sms_openvpn_up{{status_path="{p2}",type="client"}} 1.0' in out
+
+
+def test_config_cmd_list_preserves_paths_with_spaces(tmp_path):
+    spaced = tmp_path / "with space"
+    spaced.mkdir()
+    path = write(spaced, "a.status", CLIENT_STATUS)
+    metrics = [
+        {
+            "name": UP,
+            "help_text": "help",
+            "value_type": "gauge",
+            "cmd": [path],
+            "timeout": 5,
+        }
+    ]
+    cfg = tmp_path / "openvpn.json"
+    cfg.write_text(json.dumps(metrics), encoding="utf-8")
+    out = run_cycle(OpenVpnMetricHandler(str(cfg)))
+    assert f'sms_openvpn_up{{status_path="{path}",type="client"}} 1.0' in out
+
+
 def test_duplicate_client_rows_keep_first(tmp_path):
     text = (
         "TITLE,x\n"

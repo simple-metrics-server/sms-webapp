@@ -349,9 +349,10 @@ client stats and server `--status-version 2`/`3` — mirroring the
 discontinued kumina/openvpn_exporter (metrics prefixed
 `sms_openvpn_`). The format is auto-detected from the first line.
 Unlike bash, its config `cmd` holds the
-**space-separated status file path(s)**, not a command line; no
-subprocess runs. The env var `OPENVPN_STATUS_PATH` (space-separated)
-overrides the paths from the config at scrape time. Data rows carry a
+**status file path(s)** as a JSON array (a space-separated string is
+also accepted), not a command line; no
+subprocess runs. The env var `OPENVPN_STATUS_PATH` (JSON array or
+space-separated) overrides the paths from the config at scrape time. Data rows carry a
 `type` label (`client`/`server`/`unknown`) distinguishing the detected
 status-file kind; `sms_openvpn_up` tracks parse success while
 `sms_openvpn_server_up` / `sms_openvpn_client_up` report the detected
