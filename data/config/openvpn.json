@@ -7,6 +7,20 @@
         "timeout": 5
     },
     {
+        "name": "sms_openvpn_server_up",
+        "help_text": "1 if the OpenVPN status file was parsed as a server",
+        "value_type": "gauge",
+        "cmd": "/etc/openvpn/openvpn-status.log",
+        "timeout": 5
+    },
+    {
+        "name": "sms_openvpn_client_up",
+        "help_text": "1 if the OpenVPN status file was parsed as a client",
+        "value_type": "gauge",
+        "cmd": "/etc/openvpn/openvpn-status.log",
+        "timeout": 5
+    },
+    {
         "name": "sms_openvpn_status_update_time_seconds",
         "help_text": "UNIX timestamp at which the OpenVPN statistics were updated",
         "value_type": "gauge",

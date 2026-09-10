@@ -351,10 +351,14 @@ discontinued kumina/openvpn_exporter (metrics prefixed
 Unlike bash, its config `cmd` holds the
 **space-separated status file path(s)**, not a command line; no
 subprocess runs. The env var `OPENVPN_STATUS_PATH` (space-separated)
-overrides the paths from the config at scrape time. A missing,
-unreadable or malformed status file reports `sms_openvpn_up` `0.0` for
-that path and yields no other samples (warning only; the cycle
-succeeds). Metric names are a fixed schema — see
+overrides the paths from the config at scrape time. Data rows carry a
+`type` label (`client`/`server`/`unknown`) distinguishing the detected
+status-file kind; `sms_openvpn_up` tracks parse success while
+`sms_openvpn_server_up` / `sms_openvpn_client_up` report the detected
+role. A missing, unreadable or malformed status file reports
+`sms_openvpn_up` `0.0` for that path and yields no other samples
+(warning only; the cycle succeeds). Metric names are a fixed schema —
+see
 [docs/handlers.md](docs/handlers.md#openvpn--webapphandlersopenvpny).
 
 ## Known boundaries (out of scope for now)

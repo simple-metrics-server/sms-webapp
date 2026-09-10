@@ -20,9 +20,17 @@ STATUS_PATH_ENV = "OPENVPN_STATUS_PATH"
 """Env var overriding the status file paths from the config `cmd`."""
 
 UP = "sms_openvpn_up"
+SERVER_UP = "sms_openvpn_server_up"
+CLIENT_UP = "sms_openvpn_client_up"
 STATUS_UPDATE_TIME = "sms_openvpn_status_update_time_seconds"
 CONNECTED_CLIENTS = "sms_openvpn_server_connected_clients"
 ROUTE_METRIC = "sms_openvpn_server_route_last_reference_time_seconds"
+
+STATUS_PATH_LABEL = "status_path"
+TYPE_LABEL = "type"
+TYPE_CLIENT = "client"
+TYPE_SERVER = "server"
+TYPE_UNKNOWN = "unknown"
 
 CLIENT_COUNTERS = {
     "sms_openvpn_client_tun_tap_read_bytes_total": "TUN/TAP read bytes",
@@ -46,6 +54,8 @@ _ROUTE_COLUMN = "Last Ref (time_t)"
 KNOWN_METRICS = frozenset(
     {
         UP,
+        SERVER_UP,
+        CLIENT_UP,
         STATUS_UPDATE_TIME,
         CONNECTED_CLIENTS,
         ROUTE_METRIC,
@@ -60,7 +70,8 @@ _SERVER_METRIC_COLUMNS = frozenset(
 )
 
 _SERVER_CLIENT_LABELS = [
-    "status_path",
+    STATUS_PATH_LABEL,
+    TYPE_LABEL,
     "common_name",
     "connection_time",
     "real_address",
@@ -75,7 +86,8 @@ _SERVER_CLIENT_COLUMNS = [
     "Username",
 ]
 _ROUTE_LABELS = [
-    "status_path",
+    STATUS_PATH_LABEL,
+    TYPE_LABEL,
     "common_name",
     "real_address",
     "virtual_address",
@@ -396,29 +408,55 @@ class OpenVpnMetricHandler(MetricHandler):
         parsed: dict[str, ParsedStatus],
     ) -> SampleValue:
         if m.name == UP:
-            return LabeledSample(
-                "status_path",
+            return MultiLabeledSample(
+                [STATUS_PATH_LABEL, TYPE_LABEL],
                 {
-                    path: "0.0" if st.error else "1.0"
+                    (path, st.kind or TYPE_UNKNOWN): (
+                        "0.0" if st.error else "1.0"
+                    )
+                    for path, st in parsed.items()
+                },
+            )
+        if m.name == SERVER_UP:
+            return LabeledSample(
+                STATUS_PATH_LABEL,
+                {
+                    path: (
+                        "1.0"
+                        if st.kind == TYPE_SERVER and not st.error
+                        else "0.0"
+                    )
+                    for path, st in parsed.items()
+                },
+            )
+        if m.name == CLIENT_UP:
+            return LabeledSample(
+                STATUS_PATH_LABEL,
+                {
+                    path: (
+                        "1.0"
+                        if st.kind == TYPE_CLIENT and not st.error
+                        else "0.0"
+                    )
                     for path, st in parsed.items()
                 },
             )
         if m.name == STATUS_UPDATE_TIME:
-            return LabeledSample(
-                "status_path",
+            return MultiLabeledSample(
+                [STATUS_PATH_LABEL, TYPE_LABEL],
                 {
-                    path: st.update_time
+                    (path, st.kind): st.update_time
                     for path, st in parsed.items()
                     if not st.error and st.update_time is not None
                 },
             )
         if m.name == CONNECTED_CLIENTS:
-            return LabeledSample(
-                "status_path",
+            return MultiLabeledSample(
+                [STATUS_PATH_LABEL, TYPE_LABEL],
                 {
-                    path: repr(float(st.connected_clients))
+                    (path, TYPE_SERVER): repr(float(st.connected_clients))
                     for path, st in parsed.items()
-                    if st.kind == "server" and not st.error
+                    if st.kind == TYPE_SERVER and not st.error
                 },
             )
         if m.name == ROUTE_METRIC:
@@ -443,12 +481,12 @@ class OpenVpnMetricHandler(MetricHandler):
                 ),
             )
         key = CLIENT_COUNTERS[m.name]
-        return LabeledSample(
-            "status_path",
+        return MultiLabeledSample(
+            [STATUS_PATH_LABEL, TYPE_LABEL],
             {
-                path: st.client[key]
+                (path, TYPE_CLIENT): st.client[key]
                 for path, st in parsed.items()
-                if st.kind == "client" and not st.error and key in st.client
+                if st.kind == TYPE_CLIENT and not st.error and key in st.client
             },
         )
 
@@ -461,7 +499,7 @@ class OpenVpnMetricHandler(MetricHandler):
     ) -> dict[tuple[str, ...], str]:
         rows: dict[tuple[str, ...], str] = {}
         for path, status in parsed.items():
-            if status.kind != "server" or status.error:
+            if status.kind != TYPE_SERVER or status.error:
                 continue
             for row in getattr(status, attr):
                 value = row.get(value_column)
@@ -469,6 +507,7 @@ class OpenVpnMetricHandler(MetricHandler):
                     continue
                 label_key = (
                     path,
+                    TYPE_SERVER,
                     *(row.get(c, "") for c in label_columns),
                 )
                 if label_key not in rows:
