@@ -1,128 +1,198 @@
 [
     {
         "name": "sms_openvpn_up",
-        "help_text": "Whether the OpenVPN status file could be parsed",
+        "help_text": "1 if the OpenVPN status file could be parsed",
         "value_type": "gauge",
-        "cmd": ["/etc/openvpn/openvpn-status.log"],
+        "cmd": "openvpn.up",
         "timeout": 5
     },
     {
         "name": "sms_openvpn_status_path",
-        "help_text": "Status file path and its detected role (client or server)",
+        "help_text": "Status file path and its detected role",
         "value_type": "gauge",
-        "cmd": ["/etc/openvpn/openvpn-status.log"],
-        "timeout": 5
-    },
-    {
-        "name": "sms_openvpn_server_up",
-        "help_text": "1 if the OpenVPN status file was parsed as a server",
-        "value_type": "gauge",
-        "cmd": ["/etc/openvpn/openvpn-status.log"],
-        "timeout": 5
-    },
-    {
-        "name": "sms_openvpn_client_up",
-        "help_text": "1 if the OpenVPN status file was parsed as a client",
-        "value_type": "gauge",
-        "cmd": ["/etc/openvpn/openvpn-status.log"],
+        "cmd": "openvpn.status_path",
         "timeout": 5
     },
     {
         "name": "sms_openvpn_status_update_time_seconds",
         "help_text": "UNIX timestamp at which the OpenVPN statistics were updated",
         "value_type": "gauge",
-        "cmd": ["/etc/openvpn/openvpn-status.log"],
+        "cmd": "openvpn.status_update_time",
         "timeout": 5
     },
     {
         "name": "sms_openvpn_server_connected_clients",
         "help_text": "Number of connected clients",
         "value_type": "gauge",
-        "cmd": ["/etc/openvpn/openvpn-status.log"],
+        "cmd": "openvpn.server.connected_clients",
         "timeout": 5
     },
     {
         "name": "sms_openvpn_client_tun_tap_read_bytes_total",
         "help_text": "Total amount of TUN/TAP traffic read, in bytes",
         "value_type": "counter",
-        "cmd": ["/etc/openvpn/openvpn-status.log"],
+        "cmd": "openvpn.client.tun_tap_read_bytes",
         "timeout": 5
     },
     {
         "name": "sms_openvpn_client_tun_tap_write_bytes_total",
         "help_text": "Total amount of TUN/TAP traffic written, in bytes",
         "value_type": "counter",
-        "cmd": ["/etc/openvpn/openvpn-status.log"],
+        "cmd": "openvpn.client.tun_tap_write_bytes",
         "timeout": 5
     },
     {
         "name": "sms_openvpn_client_tcp_udp_read_bytes_total",
         "help_text": "Total amount of TCP/UDP traffic read, in bytes",
         "value_type": "counter",
-        "cmd": ["/etc/openvpn/openvpn-status.log"],
+        "cmd": "openvpn.client.tcp_udp_read_bytes",
         "timeout": 5
     },
     {
         "name": "sms_openvpn_client_tcp_udp_write_bytes_total",
         "help_text": "Total amount of TCP/UDP traffic written, in bytes",
         "value_type": "counter",
-        "cmd": ["/etc/openvpn/openvpn-status.log"],
+        "cmd": "openvpn.client.tcp_udp_write_bytes",
         "timeout": 5
     },
     {
-        "name": "sms_openvpn_client_auth_read_bytes_total",
-        "help_text": "Total amount of authentication traffic read, in bytes",
+        "name": "sms_openvpn_client_auth_bytes_total",
+        "help_text": "Total amount of authentication traffic, in bytes",
         "value_type": "counter",
-        "cmd": ["/etc/openvpn/openvpn-status.log"],
+        "cmd": "openvpn.client.auth_bytes",
         "timeout": 5
     },
     {
         "name": "sms_openvpn_client_pre_compress_bytes_total",
         "help_text": "Total amount of data before compression, in bytes",
         "value_type": "counter",
-        "cmd": ["/etc/openvpn/openvpn-status.log"],
+        "cmd": "openvpn.client.pre_compress_bytes",
         "timeout": 5
     },
     {
         "name": "sms_openvpn_client_post_compress_bytes_total",
         "help_text": "Total amount of data after compression, in bytes",
         "value_type": "counter",
-        "cmd": ["/etc/openvpn/openvpn-status.log"],
+        "cmd": "openvpn.client.post_compress_bytes",
         "timeout": 5
     },
     {
         "name": "sms_openvpn_client_pre_decompress_bytes_total",
         "help_text": "Total amount of data before decompression, in bytes",
         "value_type": "counter",
-        "cmd": ["/etc/openvpn/openvpn-status.log"],
+        "cmd": "openvpn.client.pre_decompress_bytes",
         "timeout": 5
     },
     {
         "name": "sms_openvpn_client_post_decompress_bytes_total",
         "help_text": "Total amount of data after decompression, in bytes",
         "value_type": "counter",
-        "cmd": ["/etc/openvpn/openvpn-status.log"],
+        "cmd": "openvpn.client.post_decompress_bytes",
         "timeout": 5
     },
     {
         "name": "sms_openvpn_server_client_received_bytes_total",
         "help_text": "Amount of data received over a connection on the VPN server, in bytes",
         "value_type": "counter",
-        "cmd": ["/etc/openvpn/openvpn-status.log"],
+        "cmd": "openvpn.server.client_received_bytes",
         "timeout": 5
     },
     {
         "name": "sms_openvpn_server_client_sent_bytes_total",
         "help_text": "Amount of data sent over a connection on the VPN server, in bytes",
         "value_type": "counter",
-        "cmd": ["/etc/openvpn/openvpn-status.log"],
+        "cmd": "openvpn.server.client_sent_bytes",
         "timeout": 5
     },
     {
         "name": "sms_openvpn_server_route_last_reference_time_seconds",
         "help_text": "Time at which a route was last referenced, in seconds",
         "value_type": "gauge",
-        "cmd": ["/etc/openvpn/openvpn-status.log"],
+        "cmd": "openvpn.server.route_last_reference",
+        "timeout": 5
+    },
+    {
+        "name": "sms_openvpn_server_max_bcast_mcast_queue_length",
+        "help_text": "Maximum length of the broadcast/multicast queue",
+        "value_type": "gauge",
+        "cmd": "openvpn.server.max_bcast_mcast_queue_length",
+        "timeout": 5
+    },
+    {
+        "name": "sms_openvpn_server_info",
+        "help_text": "Static server configuration (value is always 1)",
+        "value_type": "gauge",
+        "cmd": "openvpn.config.info",
+        "timeout": 5
+    },
+    {
+        "name": "sms_openvpn_server_port",
+        "help_text": "Configured listening port",
+        "value_type": "gauge",
+        "cmd": "openvpn.config.port",
+        "timeout": 5
+    },
+    {
+        "name": "sms_openvpn_server_verb",
+        "help_text": "Configured log verbosity",
+        "value_type": "gauge",
+        "cmd": "openvpn.config.verb",
+        "timeout": 5
+    },
+    {
+        "name": "sms_openvpn_server_script_security",
+        "help_text": "Configured script-security level",
+        "value_type": "gauge",
+        "cmd": "openvpn.config.script_security",
+        "timeout": 5
+    },
+    {
+        "name": "sms_openvpn_server_keepalive_interval_seconds",
+        "help_text": "Keepalive ping interval in seconds",
+        "value_type": "gauge",
+        "cmd": "openvpn.config.keepalive_interval",
+        "timeout": 5
+    },
+    {
+        "name": "sms_openvpn_server_keepalive_timeout_seconds",
+        "help_text": "Keepalive timeout in seconds",
+        "value_type": "gauge",
+        "cmd": "openvpn.config.keepalive_timeout",
+        "timeout": 5
+    },
+    {
+        "name": "sms_openvpn_server_pool_size",
+        "help_text": "Number of addresses in the client ifconfig pool",
+        "value_type": "gauge",
+        "cmd": "openvpn.config.pool_size",
+        "timeout": 5
+    },
+    {
+        "name": "sms_openvpn_server_client_to_client",
+        "help_text": "1 if client-to-client is enabled, else 0",
+        "value_type": "gauge",
+        "cmd": "openvpn.config.client_to_client",
+        "timeout": 5
+    },
+    {
+        "name": "sms_openvpn_server_duplicate_cn",
+        "help_text": "1 if duplicate-cn is enabled, else 0",
+        "value_type": "gauge",
+        "cmd": "openvpn.config.duplicate_cn",
+        "timeout": 5
+    },
+    {
+        "name": "sms_openvpn_server_persist_key",
+        "help_text": "1 if persist-key is enabled, else 0",
+        "value_type": "gauge",
+        "cmd": "openvpn.config.persist_key",
+        "timeout": 5
+    },
+    {
+        "name": "sms_openvpn_server_persist_tun",
+        "help_text": "1 if persist-tun is enabled, else 0",
+        "value_type": "gauge",
+        "cmd": "openvpn.config.persist_tun",
         "timeout": 5
     }
 ]

@@ -30,22 +30,27 @@ webapp/
 ├── data/                # all static + runtime data (never code)
 │   ├── config/          # one <name>.json per active handler
 │   │   ├── bash.json
-│   │   └── builtin.json
+│   │   ├── builtin.json
+│   │   └── openvpn.json
 │   ├── keys/            # TLS material (runtime artifact, gitignored)
 │   └── metrics.cache    # last good scrape result (runtime artifact, gitignored)
-├── docs/                # topic READMEs (architecture, handlers, builtin commands, cli)
+├── docs/                # topic READMEs (architecture, handlers, handler-*, cli)
 ├── webapp/              # the Python package
 │   ├── main.py          # Quart app, /metrics endpoint, run_app() seam
 │   ├── cli.py           # click CLI: scheme/cert/key preflight, self-signed cert generation, systemd install
+│   ├── common/          # shared domain types — no framework logic
+│   │   ├── model.py     #   Metric dataclass + SampleValue result union
+│   │   └── timing.py    #   ScrapeTimings/HandlerTimings + measure()
 │   ├── core/            # framework code — handler-agnostic
-│   │   ├── model.py     #   Metric dataclass
 │   │   ├── base.py      #   MetricHandler ABC (the handler interface)
-│   │   ├── helpers.py   #   HandlerSupport (verify/exec/render helpers)
-│   │   ├── process.py   #   ProcessRunner (safe async subprocess execution)
-│   │   ├── loader.py    #   dynamic handler discovery
-│   │   ├── timing.py    #   ScrapeTimings/HandlerTimings + measure()
 │   │   ├── builtin.py   #   builtin collectors/providers (who/ps/apt/proc)
+│   │   ├── loader.py    #   dynamic handler discovery
+│   │   ├── process.py   #   ProcessRunner (safe async subprocess execution)
 │   │   └── runtime.py   #   Runtime (scrape loop, cache, orchestration)
+│   ├── helpers/         # shared support code
+│   │   ├── support.py   #   HandlerSupport (verify/exec/render facade)
+│   │   ├── util.py      #   env/IO/number/key-value helpers
+│   │   └── exposition.py #   Prometheus value parsing + rendering
 │   └── handlers/        # drop-in folder for handlers
 │       ├── bash.py      # BashMetricHandler
 │       ├── builtin.py   # BuiltinMetricHandler (runtime state, no subprocess)
@@ -141,14 +146,14 @@ the current `MODE` as the scheme.
    `read()` → `verify(metrics)` → `execute(metrics)` → `finalize(metrics, results)`.
    Configs are re-read and re-verified every cycle, so config edits go
    live without restart.
- 3. **On success**: output is written atomically to `data/metrics.cache`
-    (tmp file + `os.replace`), cycle timings are stored in
-    `runtime.last_timings` and `runtime.scrape_count` is incremented.
- 4. **On failure**: the exception group is logged; the previous cache
-    and timings are kept. The app never serves partial/broken output.
- 5. **Serving**: every request increments `runtime.request_count` (via
-    a `before_request` hook); `/metrics` just reads the cache file
-    (200), or 503 if no successful scrape has happened yet.
+3. **On success**: output is written atomically to `data/metrics.cache`
+   (tmp file + `os.replace`), cycle timings are stored in
+   `runtime.last_timings` and `runtime.scrape_count` is incremented.
+4. **On failure**: the exception group is logged; the previous cache
+   and timings are kept. The app never serves partial/broken output.
+5. **Serving**: every request increments `runtime.request_count` (via
+   a `before_request` hook); `/metrics` just reads the cache file
+   (200), or 503 if no successful scrape has happened yet.
 
 A cycle is capped at the scrape interval (`asyncio.wait_for`), so a
 stuck handler can never block the next cycle.
@@ -166,8 +171,8 @@ Minimal handler:
 
 ```python
 from typing import ClassVar
+from webapp.common.model import DistributionSample, Metric
 from webapp.core.base import MetricHandler
-from webapp.core.model import DistributionSample, Metric
 
 class FooMetricHandler(MetricHandler):
     required_fields: ClassVar[list[str]] = ["cmd"]
@@ -183,6 +188,11 @@ defaults in the base class; override them if your config format or
 rendering differs. Loader rules: zero handler classes in a module →
 skipped with a warning; more than one → startup error.
 
+Shipped handlers: [handler-bash.md](docs/handler-bash.md),
+[handler-builtin.md](docs/handler-builtin.md),
+[handler-openvpn.md](docs/handler-openvpn.md). The general handler
+model lives in [docs/handlers.md](docs/handlers.md).
+
 ### Metric config fields (`data/config/<handler>.json`)
 
 | field        | type   | notes                                            |
@@ -190,7 +200,7 @@ skipped with a warning; more than one → startup error.
 | `name`       | str    | must match `[a-zA-Z_:][a-zA-Z0-9_:]*`, unique across ALL handlers, prefixed `sms_<handler>_...` (e.g. `sms_bash_test_gauge`) |
 | `help_text`  | str    | rendered in `# HELP`                             |
 | `value_type` | str    | one of `counter`, `gauge`, `untyped`, `histogram`, `summary` |
-| `cmd`        | str    | command line, parsed with `shlex` (no shell!)    |
+| `cmd`        | str    | meaning depends on the handler: a shell-free command line (bash) or a provider command (builtin `builtin.*`, openvpn `openvpn.*`) |
 | `timeout`    | number | seconds, must be > 0                             |
 | `buckets`    | list   | histogram only — ascending finite numbers (upper bounds); `+Inf` implicit |
 | `quantiles`  | list   | summary only — ascending numbers in (0, 1)       |
@@ -262,6 +272,8 @@ Rendering:
 
 ## Builtin commands
 
+Full command table: [docs/handler-builtin.md](docs/handler-builtin.md).
+
 `Runtime` holds the shared state the builtin handler reports: a
 `ScrapeTimings` from the last successful cycle (`last_timings`:
 `total` wall time plus per-handler phase durations
@@ -298,10 +310,15 @@ Both render as Prometheus `counter` metrics.
   `pwd`, `0.0` if unresolvable); renders HELP/TYPE only when nobody
   is logged in
 - `builtin.os.processes` — number of processes (`ps aux`, header skipped)
-- `builtin.os.packages_upgradable` — upgradable packages
-  (`apt-get -s upgrade`, counts `Inst ` lines)
-- `builtin.os.reboot_required` — `1.0` if `/var/run/reboot-required`
-  exists, else `0.0` (no subprocess)
+- `builtin.os.packages_upgradable` — upgradable packages; `apt-get -s
+  upgrade` (`Inst ` lines) on Debian, `dnf -q check-update`/`yum`
+  (count of entries, exit 100/tolerated) on the Red Hat family
+- `builtin.os.reboot_required` — `1.0` if a reboot is due, else `0.0`;
+  Debian `/run/reboot-required` or `needs-restarting -r` on the Red Hat
+  family
+
+The package manager is chosen from `/etc/os-release` (Debian vs RHEL
+family) plus binary availability; a host with neither reports `0.0`.
 
 Each OS source runs **once per cycle, only if configured**; its timeout
 is the max of the requesting metrics' `timeout` values. OS probe
@@ -309,8 +326,9 @@ failures (missing command, timeout, non-zero exit) are logged as a
 warning and report `0.0` — they never fail the cycle.
 `CancelledError` is not swallowed.
 
-**Debian-specific**: the package and reboot checks assume Debian (apt +
-`/var/run/reboot-required`). Platform-agnostic detection is future work.
+**Packages and reboot**: support Debian (apt-get +
+`/run/reboot-required`) and the Red Hat family (dnf/yum +
+`needs-restarting`). Other distributions report `0.0`.
 
 Builtin commands only produce scalar or labeled values, so `verify()`
 rejects `histogram`/`summary` `value_type` for any builtin `cmd`.
@@ -339,33 +357,40 @@ values)`, rendered as one `name{label="v"} value` line per entry (sorted
 by label value, label values escaped), or a
 `MultiLabeledSample(label_names, rows)` for several label dimensions
 (each `rows` key is a label value tuple in `label_names` order). See
-`webapp.core.model.SampleValue` for the full result union.
+`webapp.common.model.SampleValue` for the full result union.
 
 ## OpenVPN handler
 
-`OpenVpnMetricHandler` (`webapp/handlers/openvpn.py`) parses OpenVPN
-`--status` files — the classic `OpenVPN CLIENT LIST` (version 1),
-client stats and server `--status-version 2`/`3` — mirroring the
-discontinued kumina/openvpn_exporter (metrics prefixed
-`sms_openvpn_`). The format is auto-detected from the first line.
-Unlike bash, its config `cmd` holds the
-**status file path(s)** as a JSON array (a space-separated string is
-also accepted), not a command line; no
-subprocess runs. The env var `OPENVPN_STATUS_PATH` (JSON array,
-bracketed/comma-separated list, or space-separated) overrides the
-paths from the config at scrape time. The `status_path` label appears
-only on the dedicated `sms_openvpn_status_path` metric (value `1`/`0`
-per file); every other metric uses a `type` label (`client`/`server`)
-to distinguish roles. `sms_openvpn_up` tracks parse success while
-`sms_openvpn_server_up` / `sms_openvpn_client_up` report the detected
-role. A missing, unreadable or malformed status file reports
-`sms_openvpn_up` `0.0` for that path and yields no other samples
-(warning only; the cycle succeeds). Metric names are a fixed schema —
-see
-[docs/handlers.md](docs/handlers.md#openvpn--webapphandlersopenvpny).
+`OpenVpnMetricHandler` (`webapp/handlers/openvpn.py`) reads OpenVPN
+`--status` files. Configs come from the env var `OPENVPN_CONFIG_PATH`
+and status files from `OPENVPN_STATUS_PATH`, both **arrays of paths**
+(JSON array, CSV, bracketed list or space-separated via
+`webapp.helpers.util.env_list`), paired by position. Each config must
+set `status-version 3` (skipped with a warning otherwise); `mode
+server` marks a server, anything else a client. The `network` label is
+the config file name without extension. No subprocess runs.
+
+Server status files are tab-separated; client files use the classic
+`OpenVPN STATISTICS` key/value format. All data metrics carry
+`network` and `type`; the `status_path` label appears only on the
+dedicated `sms_openvpn_status_path` metric (value `1`/`0` per file).
+`sms_openvpn_up` tracks parse success and the `type` label carries the
+detected role. A missing, unreadable or malformed status file reports
+`sms_openvpn_up` `0.0` for that source and yields no other samples
+(warning only; the cycle succeeds).
+
+Each config entry names an `openvpn.*` command that extracts one value
+on demand (`openvpn.up`, `openvpn.status_update_time`,
+`openvpn.server.connected_clients`, per-client/per-route server
+metrics, `openvpn.client.*` counters and `openvpn.config.*` values);
+unknown commands are rejected by `verify()`. Full command table:
+[docs/handler-openvpn.md](docs/handler-openvpn.md).
 
 ## Known boundaries (out of scope for now)
 
 - No auth/TLS on `/metrics` — assumed to run in a trusted network.
 - Stdout/stderr of commands are fully buffered; configs are trusted.
-- OS probes are Debian-specific (to be made platform-agnostic later).
+- OS probes are Debian- and Red Hat-specific (other distros report
+  `0.0`).
+- OpenVPN supports only `status-version 3`, and the config/status paths
+  are passed via env vars (no process discovery).

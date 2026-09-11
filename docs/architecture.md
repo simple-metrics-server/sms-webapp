@@ -46,16 +46,19 @@ Design goals, in order:
 |--------|----------------|
 | `webapp/main.py` | Quart app, `/metrics` endpoint, request counting, `run_app()` seam used by the CLI |
 | `webapp/cli.py` | click CLI: TLS preflight, self-signed cert generation, systemd install/uninstall |
-| `webapp/core/model.py` | `Metric` dataclass and the `SampleValue` result union |
+| `webapp/common/model.py` | `Metric` dataclass and the `SampleValue` result union |
+| `webapp/common/timing.py` | `ScrapeTimings`/`HandlerTimings` + `measure()` context manager |
 | `webapp/core/base.py` | `MetricHandler` ABC — the handler interface with default phases |
-| `webapp/core/helpers.py` | `HandlerSupport`: config verification, command execution, output parsing, exposition rendering |
 | `webapp/core/process.py` | `ProcessRunner`: safe async subprocess execution |
 | `webapp/core/loader.py` | dynamic handler discovery |
-| `webapp/core/timing.py` | `ScrapeTimings`/`HandlerTimings` + `measure()` context manager |
 | `webapp/core/builtin.py` | builtin command providers and OS collectors |
 | `webapp/core/runtime.py` | `Runtime`: scrape loop, cache orchestration, shared state |
+| `webapp/helpers/support.py` | `HandlerSupport`: handler-facing facade for verification, command execution and rendering |
+| `webapp/helpers/util.py` | generic helpers: env lists, file/command IO, key/value parsing, numbers |
+| `webapp/helpers/exposition.py` | Prometheus exposition: value/distribution parsing and rendering |
 | `webapp/handlers/bash.py` | `BashMetricHandler` — metrics from shell commands |
 | `webapp/handlers/builtin.py` | `BuiltinMetricHandler` — runtime/OS state, no subprocess per metric |
+| `webapp/handlers/openvpn.py` | `OpenVpnMetricHandler` — OpenVPN `--status` files |
 
 ## The scrape cycle
 
@@ -122,6 +125,7 @@ injects itself (the builtin handler uses this to read shared state).
 | Any handler phase during a cycle | whole cycle fails; exception group is logged; previous cache and timings stay; app keeps serving |
 | A single command of the bash handler | its execute fails → the cycle fails (no partial output) |
 | A builtin OS probe (missing binary, timeout, non-zero exit) | logged as warning, the metric reports `0.0`; the cycle still succeeds |
+| A missing/malformed OpenVPN status file | logged as warning, `sms_openvpn_up` reports `0.0`; the cycle still succeeds |
 | Cycle exceeds the scrape interval | cycle aborted by `asyncio.wait_for`, logged, previous cache kept |
 
 ## Concurrency and state
@@ -138,7 +142,7 @@ shared across cycles. The only mutable state lives on the `Runtime`:
   (incremented by the HTTP hook / on cycle success)
 
 Both are exported by the builtin handler (see
-[builtin commands](builtin-commands.md)).
+[handler-builtin.md](handler-builtin.md)).
 
 Note that builtin metrics lag one cycle: they are written *during* a
 cycle, before that cycle's counters/timings are updated — the same
@@ -165,5 +169,6 @@ service — see the [CLI reference](cli.md).
 
 - No authentication on `/metrics` — trusted network assumed
 - Stdout/stderr of commands are fully buffered; configs are trusted
-- OS probes (packages, reboot-required) are Debian-specific
+- OS probes (packages, reboot-required) support the Debian and Red Hat
+  families only
 - No multi-process serving: one process, one event loop, one port

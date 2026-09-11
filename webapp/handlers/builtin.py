@@ -1,13 +1,13 @@
 import logging
 from typing import ClassVar
 
+from webapp.common.model import Metric, SampleValue
 from webapp.core.base import MetricHandler
 from webapp.core.builtin import (
     collect,
     is_known_command,
     parse_handler_cmd,
 )
-from webapp.core.model import Metric, SampleValue
 
 log = logging.getLogger(__name__)
 

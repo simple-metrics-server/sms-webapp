@@ -30,6 +30,21 @@ def test_run_raises_on_nonzero_exit():
     assert "exited with 1" in str(excinfo.value)
 
 
+def test_run_status_returns_code_and_stdout():
+    code, out = asyncio.run(
+        ProcessRunner().run_status(["sh", "-c", "echo hi; exit 7"], timeout=5)
+    )
+    assert code == 7
+    assert out == "hi\n"
+
+
+def test_run_status_success():
+    code, out = asyncio.run(
+        ProcessRunner().run_status(["echo", "ok"], timeout=5)
+    )
+    assert (code, out) == (0, "ok\n")
+
+
 def test_run_includes_stderr_in_error():
     with pytest.raises(RuntimeError, match="some error"):
         asyncio.run(

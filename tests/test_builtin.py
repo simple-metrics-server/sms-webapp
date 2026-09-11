@@ -4,9 +4,9 @@ import os
 
 import pytest
 
-from webapp.core.model import LabeledSample
+from webapp.common.model import LabeledSample
+from webapp.common.timing import HandlerTimings, ScrapeTimings
 from webapp.core.runtime import Runtime
-from webapp.core.timing import HandlerTimings, ScrapeTimings
 from webapp.handlers.builtin import BuiltinMetricHandler
 
 
@@ -201,9 +201,10 @@ def test_full_cycle_counters_via_runtime(tmp_path):
 class FakeRunner:
     """Stub ProcessRunner: canned stdout per argv, records calls."""
 
-    def __init__(self, outputs=None, error=None):
+    def __init__(self, outputs=None, error=None, statuses=None):
         self.outputs = outputs or {}
         self.error = error
+        self.statuses = statuses or {}
         self.calls = []
 
     async def run(self, argv, timeout):
@@ -211,6 +212,15 @@ class FakeRunner:
         if self.error is not None:
             raise self.error
         return self.outputs.get(" ".join(argv), "")
+
+    async def run_status(self, argv, timeout):
+        self.calls.append((argv, timeout))
+        if self.error is not None:
+            raise self.error
+        key = " ".join(argv)
+        if key in self.statuses:
+            return self.statuses[key]
+        return 0, self.outputs.get(key, "")
 
 
 def make_handler(tmp_path, metrics):
@@ -363,7 +373,19 @@ def test_processes_zero_on_empty_and_failure(tmp_path):
 # --- packages ---
 
 
-def test_packages_counts_inst_lines(tmp_path):
+def test_packages_counts_inst_lines(tmp_path, monkeypatch):
+    import webapp.core.builtin as builtin_mod
+
+    monkeypatch.setattr(
+        builtin_mod.platform,
+        "freedesktop_os_release",
+        lambda: {"ID": "debian"},
+    )
+    monkeypatch.setattr(
+        builtin_mod.shutil,
+        "which",
+        lambda name: "/usr/bin/apt-get" if name == "apt-get" else None,
+    )
     metrics = [metric(name="m_pkg", cmd="builtin.os.packages_upgradable")]
     h = make_handler(tmp_path, metrics)
     h.support.runner = FakeRunner(
@@ -383,6 +405,52 @@ def test_packages_counts_inst_lines(tmp_path):
     assert h.support.runner.calls == [(["apt-get", "-s", "upgrade"], 5.0)]
 
 
+def test_packages_counts_dnf_check_update(tmp_path, monkeypatch):
+    import webapp.core.builtin as builtin_mod
+
+    monkeypatch.setattr(
+        builtin_mod.platform,
+        "freedesktop_os_release",
+        lambda: {"ID": "almalinux"},
+    )
+    monkeypatch.setattr(
+        builtin_mod.shutil,
+        "which",
+        lambda name: "/usr/bin/dnf" if name == "dnf" else None,
+    )
+    h = make_handler(
+        tmp_path, [metric(name="m_pkg", cmd="builtin.os.packages_upgradable")]
+    )
+    h.support.runner = FakeRunner(
+        statuses={
+            "dnf -q check-update": (
+                100,
+                "foo.x86_64 1-2 base\nbar.x86_64 3-4 base\n",
+            )
+        }
+    )
+    read = asyncio.run(h.read())
+    asyncio.run(h.verify(read))
+    assert asyncio.run(h.execute(read))["m_pkg"] == "2.0"
+
+
+def test_packages_zero_without_manager(tmp_path, monkeypatch):
+    import webapp.core.builtin as builtin_mod
+
+    monkeypatch.setattr(
+        builtin_mod.platform,
+        "freedesktop_os_release",
+        lambda: {"ID": "alpine"},
+    )
+    monkeypatch.setattr(builtin_mod.shutil, "which", lambda name: None)
+    h = make_handler(
+        tmp_path, [metric(name="m", cmd="builtin.os.packages_upgradable")]
+    )
+    read = asyncio.run(h.read())
+    asyncio.run(h.verify(read))
+    assert asyncio.run(h.execute(read))["m"] == "0.0"
+
+
 def test_packages_zero_on_failure(tmp_path):
     h = make_handler(
         tmp_path, [metric(name="m", cmd="builtin.os.packages_upgradable")]
@@ -400,7 +468,8 @@ def test_reboot_required_flag(tmp_path, monkeypatch):
     import webapp.core.builtin as builtin_mod
 
     flag = tmp_path / "reboot-required"
-    monkeypatch.setattr(builtin_mod, "REBOOT_REQUIRED_PATH", str(flag))
+    monkeypatch.setattr(builtin_mod, "REBOOT_REQUIRED_PATHS", (str(flag),))
+    monkeypatch.setattr(builtin_mod.shutil, "which", lambda name: None)
 
     metrics = [metric(name="m_reboot", cmd="builtin.os.reboot_required")]
     h = make_handler(tmp_path, metrics)
@@ -409,6 +478,28 @@ def test_reboot_required_flag(tmp_path, monkeypatch):
 
     assert asyncio.run(h.execute(read))["m_reboot"] == "0.0"
     flag.write_text("")
+    assert asyncio.run(h.execute(read))["m_reboot"] == "1.0"
+
+
+def test_reboot_via_needs_restarting(tmp_path, monkeypatch):
+    import webapp.core.builtin as builtin_mod
+
+    monkeypatch.setattr(builtin_mod, "REBOOT_REQUIRED_PATHS", ())
+    monkeypatch.setattr(
+        builtin_mod.shutil,
+        "which",
+        lambda name: (
+            "/usr/sbin/needs-restarting" if name == "needs-restarting" else None
+        ),
+    )
+    h = make_handler(
+        tmp_path, [metric(name="m_reboot", cmd="builtin.os.reboot_required")]
+    )
+    h.support.runner = FakeRunner(
+        statuses={"needs-restarting -r": (1, "Reboot is required\n")}
+    )
+    read = asyncio.run(h.read())
+    asyncio.run(h.verify(read))
     assert asyncio.run(h.execute(read))["m_reboot"] == "1.0"
 
 

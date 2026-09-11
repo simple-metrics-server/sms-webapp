@@ -21,6 +21,29 @@ class ProcessRunner:
 
     async def run(self, argv: list[str], timeout: float) -> str:
         """Execute one command, return stdout. Raise on any failure."""
+        code, stdout, stderr = await self._execute(argv, timeout)
+        if code != 0:
+            raise RuntimeError(
+                f"exited with {code}: {' '.join(argv)!r}: {stderr[:MAX_STDERR]}"
+            )
+        return stdout
+
+    async def run_status(
+        self, argv: list[str], timeout: float
+    ) -> tuple[int, str]:
+        """Execute one command, return (exit code, stdout).
+
+        Unlike run(), a non-zero exit code is not an error (some probes
+        use it to signal "updates available" / "reboot required").
+        Timeouts and cancellations still raise.
+        """
+        code, stdout, _ = await self._execute(argv, timeout)
+        return code, stdout
+
+    async def _execute(
+        self, argv: list[str], timeout: float
+    ) -> tuple[int, str, str]:
+        """Run to completion; return (exit code, stdout, stderr)."""
         if not argv:
             raise ValueError("cannot execute an empty command")
         log.debug("executing: %s", argv)
@@ -42,12 +65,11 @@ class ProcessRunner:
         except asyncio.CancelledError:
             await self._reap(proc)
             raise
-        if proc.returncode != 0:
-            raise RuntimeError(
-                f"exited with {proc.returncode}: {' '.join(argv)!r}: "
-                f"{stderr.decode('utf-8', 'replace').strip()[:MAX_STDERR]}"
-            )
-        return stdout.decode("utf-8")
+        return (
+            proc.returncode if proc.returncode is not None else -1,
+            stdout.decode("utf-8"),
+            stderr.decode("utf-8", "replace").strip(),
+        )
 
     async def _reap(self, proc: asyncio.subprocess.Process) -> None:
         """Kill the whole process group and wait for the child to die."""

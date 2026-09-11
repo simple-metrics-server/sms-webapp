@@ -1,78 +1,61 @@
 import asyncio
-import json
+import ipaddress
 import logging
-import os
-import shlex
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import ClassVar
 
+from webapp.common.model import Metric, MultiLabeledSample, SampleValue
 from webapp.core.base import MetricHandler
-from webapp.core.model import (
-    LabeledSample,
-    Metric,
-    MultiLabeledSample,
-    SampleValue,
+from webapp.helpers.util import (
+    env_list,
+    map_row,
+    param,
+    param_is,
+    parse_key_value,
+    path_stem,
+    read_text,
+    to_float,
 )
 
 log = logging.getLogger(__name__)
 
-STATUS_PATH_ENV = "OPENVPN_STATUS_PATH"
-"""Env var overriding the status file paths from the config `cmd`."""
+CONFIG_PATHS_ENV = "OPENVPN_CONFIG_PATH"
+"""Env var holding an array of OpenVPN config file paths."""
 
-UP = "sms_openvpn_up"
-STATUS_PATH_METRIC = "sms_openvpn_status_path"
-SERVER_UP = "sms_openvpn_server_up"
-CLIENT_UP = "sms_openvpn_client_up"
-STATUS_UPDATE_TIME = "sms_openvpn_status_update_time_seconds"
-CONNECTED_CLIENTS = "sms_openvpn_server_connected_clients"
-ROUTE_METRIC = "sms_openvpn_server_route_last_reference_time_seconds"
+STATUS_PATHS_ENV = "OPENVPN_STATUS_PATH"
+"""Env var holding an array of OpenVPN status file paths."""
 
-STATUS_PATH_LABEL = "status_path"
+STATUS_VERSION_KEY = "status-version"
+STATUS_VERSION = "3"
+MODE_KEY = "mode"
+MODE_SERVER = "server"
+
+NETWORK_LABEL = "network"
 TYPE_LABEL = "type"
-TYPE_CLIENT = "client"
-TYPE_SERVER = "server"
-TYPE_UNKNOWN = "unknown"
+STATUS_PATH_LABEL = "status_path"
 
-CLIENT_COUNTERS = {
-    "sms_openvpn_client_tun_tap_read_bytes_total": "TUN/TAP read bytes",
-    "sms_openvpn_client_tun_tap_write_bytes_total": "TUN/TAP write bytes",
-    "sms_openvpn_client_tcp_udp_read_bytes_total": "TCP/UDP read bytes",
-    "sms_openvpn_client_tcp_udp_write_bytes_total": "TCP/UDP write bytes",
-    "sms_openvpn_client_auth_read_bytes_total": "Auth read bytes",
-    "sms_openvpn_client_pre_compress_bytes_total": "pre-compress bytes",
-    "sms_openvpn_client_post_compress_bytes_total": "post-compress bytes",
-    "sms_openvpn_client_pre_decompress_bytes_total": "pre-decompress bytes",
-    "sms_openvpn_client_post_decompress_bytes_total": "post-decompress bytes",
+CLIENT_COLUMNS = {
+    "openvpn.client.tun_tap_read_bytes": "TUN/TAP read bytes",
+    "openvpn.client.tun_tap_write_bytes": "TUN/TAP write bytes",
+    "openvpn.client.tcp_udp_read_bytes": "TCP/UDP read bytes",
+    "openvpn.client.tcp_udp_write_bytes": "TCP/UDP write bytes",
+    "openvpn.client.auth_bytes": "Auth read bytes",
+    "openvpn.client.pre_compress_bytes": "pre-compress bytes",
+    "openvpn.client.post_compress_bytes": "post-compress bytes",
+    "openvpn.client.pre_decompress_bytes": "pre-decompress bytes",
+    "openvpn.client.post_decompress_bytes": "post-decompress bytes",
 }
 
-SERVER_CLIENT_METRICS = {
-    "sms_openvpn_server_client_received_bytes_total": "Bytes Received",
-    "sms_openvpn_server_client_sent_bytes_total": "Bytes Sent",
+SERVER_CLIENT_COLUMNS = {
+    "openvpn.server.client_received_bytes": "Bytes Received",
+    "openvpn.server.client_sent_bytes": "Bytes Sent",
 }
 
-_ROUTE_COLUMN = "Last Ref (time_t)"
-
-KNOWN_METRICS = frozenset(
-    {
-        UP,
-        STATUS_PATH_METRIC,
-        SERVER_UP,
-        CLIENT_UP,
-        STATUS_UPDATE_TIME,
-        CONNECTED_CLIENTS,
-        ROUTE_METRIC,
-        *CLIENT_COUNTERS,
-        *SERVER_CLIENT_METRICS,
-    }
-)
-
-_CLIENT_KEYS = frozenset(CLIENT_COUNTERS.values())
-_SERVER_METRIC_COLUMNS = frozenset(
-    {*SERVER_CLIENT_METRICS.values(), _ROUTE_COLUMN}
-)
-
-_SERVER_CLIENT_LABELS = [
+CLIENT_LABELS = [NETWORK_LABEL, TYPE_LABEL]
+SERVER_CLIENT_LABELS = [
+    NETWORK_LABEL,
     TYPE_LABEL,
     "common_name",
     "connection_time",
@@ -80,484 +63,404 @@ _SERVER_CLIENT_LABELS = [
     "virtual_address",
     "username",
 ]
-_SERVER_CLIENT_COLUMNS = [
+SERVER_CLIENT_KEYS = [
     "Common Name",
     "Connected Since (time_t)",
     "Real Address",
     "Virtual Address",
     "Username",
 ]
-_ROUTE_LABELS = [
+ROUTE_LABELS = [
+    NETWORK_LABEL,
     TYPE_LABEL,
     "common_name",
     "real_address",
     "virtual_address",
 ]
-_ROUTE_COLUMNS = ["Common Name", "Real Address", "Virtual Address"]
+ROUTE_KEYS = ["Common Name", "Real Address", "Virtual Address"]
+
+CONFIG_NUMBERS = {
+    "openvpn.config.port": ("port", 0),
+    "openvpn.config.verb": ("verb", 0),
+    "openvpn.config.script_security": ("script-security", 0),
+    "openvpn.config.keepalive_interval": ("keepalive", 0),
+    "openvpn.config.keepalive_timeout": ("keepalive", 1),
+}
+CONFIG_FLAGS = {
+    "openvpn.config.client_to_client": "client-to-client",
+    "openvpn.config.duplicate_cn": "duplicate-cn",
+    "openvpn.config.persist_key": "persist-key",
+    "openvpn.config.persist_tun": "persist-tun",
+}
+INFO_KEYS = ["proto", "dev", "auth", "data-ciphers", "tls-version-min"]
+INFO_LABELS = [
+    NETWORK_LABEL,
+    TYPE_LABEL,
+    "proto",
+    "dev",
+    "auth",
+    "cipher",
+    "tls_version_min",
+]
+MAX_QUEUE_KEY = "Max bcast/mcast queue length"
 
 
 @dataclass
-class ParsedStatus:
-    """One parsed OpenVPN status file.
+class StatusData:
+    """Parsed contents of an OpenVPN status file."""
 
-    kind is "client" or "server" for a successful parse, "" on error.
-    server_clients/server_routes hold one column-name -> value dict per
-    row, with numeric metric columns already canonicalized; error holds
-    the failure reason for an unreadable or malformed file.
-    """
-
-    kind: str = ""
+    kind: str
     update_time: str | None = None
-    client: dict[str, str] = field(default_factory=dict)
-    server_clients: list[dict[str, str]] = field(default_factory=list)
-    server_routes: list[dict[str, str]] = field(default_factory=list)
-    connected_clients: int = 0
-    error: str | None = None
+    clients: list[dict[str, str]] = field(default_factory=list)
+    routes: list[dict[str, str]] = field(default_factory=list)
+    counters: dict[str, str] = field(default_factory=dict)
+    global_stats: dict[str, str] = field(default_factory=dict)
 
 
-def _parse_path_string(raw: str) -> list[str]:
-    """Split a status path spec into individual paths.
+@dataclass
+class Source:
+    """A config/status pair with the info needed to parse the status."""
 
-    Accepts a JSON array (`["a", "b"]`), a bracketed list with or
-    without quotes (`[a, b]`, `['a', 'b']`), a comma-separated list, or
-    a plain space-separated string (shell quoting supported).
-    """
-    text = raw.strip()
-    if not text:
-        return []
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        parsed = None
-    if isinstance(parsed, list):
-        return [str(path) for path in parsed]
-    if text.startswith("[") and text.endswith("]"):
-        parts = text[1:-1].split(",")
-    elif "," in text:
-        parts = text.split(",")
-    else:
-        return shlex.split(text)
-    return [_strip_quotes(part.strip()) for part in parts if part.strip()]
+    network: str
+    params: dict[str, list[str]]
+    status_path: str
+    kind: str
 
 
-def _strip_quotes(value: str) -> str:
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-        return value[1:-1]
-    return value
+ParsedSource = tuple[Source, "StatusData | None"]
 
 
-def _paths(m: Metric) -> list[str]:
-    if isinstance(m.cmd, list):
-        return [str(path) for path in m.cmd]
-    return _parse_path_string(m.cmd)
+def parse_server_status(text: str) -> StatusData:
+    """Parse a server status file (status-version 3, tab-separated)."""
+    data = StatusData(kind="server")
+    headers: dict[str, list[str]] = {}
+    for line in text.splitlines():
+        _parse_server_line(line, data, headers)
+    return data
 
 
-def _status_path_override() -> list[str]:
-    """Paths from the OPENVPN_STATUS_PATH env var, empty when unset."""
-    return _parse_path_string(os.environ.get(STATUS_PATH_ENV, ""))
+def _parse_server_line(
+    line: str, data: StatusData, headers: dict[str, list[str]]
+) -> None:
+    """Handle one tab-separated server status line."""
+    fields = line.split("\t")
+    key = fields[0]
+    if key == "TIME" and len(fields) == 3:
+        data.update_time = fields[2]
+    elif key == "HEADER" and len(fields) > 2:
+        headers[fields[1]] = fields[2:]
+    elif key == "GLOBAL_STATS" and len(fields) >= 3:
+        data.global_stats[fields[1]] = fields[2]
+    elif key in ("CLIENT_LIST", "ROUTING_TABLE"):
+        rows = data.clients if key == "CLIENT_LIST" else data.routes
+        rows.append(map_row(fields, headers.get(key), context=key))
 
 
-def _timeout_for(
-    path: str, metrics: list[Metric], override: list[str]
-) -> float:
-    """Largest timeout among the metrics requesting this status path."""
-    if override:
-        return max((m.timeout for m in metrics), default=1.0)
-    return max((m.timeout for m in metrics if path in _paths(m)), default=1.0)
+def parse_client_status(text: str) -> StatusData:
+    """Parse a client statistics file (comma-separated key,value)."""
+    data = StatusData(kind="client")
+    for line in text.splitlines():
+        fields = line.split(",")
+        if len(fields) != 2:
+            continue
+        if fields[0] == "Updated":
+            data.update_time = fields[1]
+        else:
+            data.counters[fields[0]] = fields[1]
+    return data
 
 
-def _read_file(path: str) -> str:
-    with open(path, encoding="utf-8", errors="replace") as f:
-        return f.read()
+_PARSERS = {"server": parse_server_status, "client": parse_client_status}
 
 
-def _is_empty_sample(value: SampleValue) -> bool:
-    """True for a labeled family with no rows (nothing to expose)."""
-    if isinstance(value, LabeledSample):
-        return not value.values
-    if isinstance(value, MultiLabeledSample):
-        return not value.rows
-    return False
+def _number(value: str | None) -> str | None:
+    if value is None:
+        return None
+    number = to_float(value)
+    return None if number is None else repr(number)
 
 
-def _asctime_to_epoch(value: str) -> str:
-    """Parse an OpenVPN timestamp (ISO 8601 or asctime) as local time."""
-    normalized = " ".join(value.split())
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%a %b %d %H:%M:%S %Y"):
+def _timestamp(value: str) -> str | None:
+    number = _number(value)
+    if number is not None:
+        return number
+    parsed = time.strptime(" ".join(value.split()), "%a %b %d %H:%M:%S %Y")
+    return repr(float(time.mktime(parsed)))
+
+
+# --- metric extractors (openvpn.<command> -> SampleValue) ---
+
+
+def _up(parsed: list[ParsedSource]) -> SampleValue:
+    return MultiLabeledSample(
+        CLIENT_LABELS,
+        {
+            (source.network, source.kind): (
+                "1.0" if data is not None else "0.0"
+            )
+            for source, data in parsed
+        },
+    )
+
+
+def _status_path(parsed: list[ParsedSource]) -> SampleValue:
+    return MultiLabeledSample(
+        [STATUS_PATH_LABEL, *CLIENT_LABELS],
+        {
+            (source.status_path, source.network, source.kind): (
+                "1.0" if data is not None else "0.0"
+            )
+            for source, data in parsed
+        },
+    )
+
+
+def _status_update_time(parsed: list[ParsedSource]) -> SampleValue:
+    rows: dict[tuple[str, ...], str] = {}
+    for source, data in parsed:
+        if data is None or data.update_time is None:
+            continue
+        value = _timestamp(data.update_time)
+        if value is not None:
+            rows[(source.network, source.kind)] = value
+    return MultiLabeledSample(CLIENT_LABELS, rows)
+
+
+def _connected_clients(parsed: list[ParsedSource]) -> SampleValue:
+    return MultiLabeledSample(
+        CLIENT_LABELS,
+        {
+            (source.network, source.kind): repr(float(len(data.clients)))
+            for source, data in parsed
+            if data is not None and source.kind == "server"
+        },
+    )
+
+
+def _client_counter(
+    command: str,
+) -> Callable[[list[ParsedSource]], SampleValue]:
+    column = CLIENT_COLUMNS[command]
+
+    def extract(parsed: list[ParsedSource]) -> SampleValue:
+        rows: dict[tuple[str, ...], str] = {}
+        for source, data in parsed:
+            if data is None or source.kind != "client":
+                continue
+            value = _number(data.counters.get(column))
+            if value is not None:
+                rows[(source.network, source.kind)] = value
+        return MultiLabeledSample(CLIENT_LABELS, rows)
+
+    return extract
+
+
+def _server_client(
+    command: str,
+) -> Callable[[list[ParsedSource]], SampleValue]:
+    column = SERVER_CLIENT_COLUMNS[command]
+
+    def extract(parsed: list[ParsedSource]) -> SampleValue:
+        rows: dict[tuple[str, ...], str] = {}
+        for source, data in parsed:
+            if data is None or source.kind != "server":
+                continue
+            for row in data.clients:
+                value = _number(row.get(column))
+                if value is None:
+                    continue
+                key = (
+                    source.network,
+                    source.kind,
+                    *(row.get(k, "") for k in SERVER_CLIENT_KEYS),
+                )
+                rows.setdefault(key, value)
+        return MultiLabeledSample(SERVER_CLIENT_LABELS, rows)
+
+    return extract
+
+
+def _route(parsed: list[ParsedSource]) -> SampleValue:
+    rows: dict[tuple[str, ...], str] = {}
+    for source, data in parsed:
+        if data is None or source.kind != "server":
+            continue
+        for row in data.routes:
+            value = _number(row.get("Last Ref (time_t)"))
+            if value is None:
+                continue
+            key = (
+                source.network,
+                source.kind,
+                *(row.get(k, "") for k in ROUTE_KEYS),
+            )
+            rows.setdefault(key, value)
+    return MultiLabeledSample(ROUTE_LABELS, rows)
+
+
+def _config_number(
+    key: str, index: int = 0
+) -> Callable[[list[ParsedSource]], SampleValue]:
+    def extract(parsed: list[ParsedSource]) -> SampleValue:
+        rows: dict[tuple[str, ...], str] = {}
+        for source, _ in parsed:
+            value = _number(param(source.params, key, index))
+            if value is not None:
+                rows[(source.network, source.kind)] = value
+        return MultiLabeledSample(CLIENT_LABELS, rows)
+
+    return extract
+
+
+def _config_flag(
+    key: str,
+) -> Callable[[list[ParsedSource]], SampleValue]:
+    def extract(parsed: list[ParsedSource]) -> SampleValue:
+        return MultiLabeledSample(
+            CLIENT_LABELS,
+            {
+                (source.network, source.kind): (
+                    "1.0" if key in source.params else "0.0"
+                )
+                for source, _ in parsed
+            },
+        )
+
+    return extract
+
+
+def _config_pool_size(parsed: list[ParsedSource]) -> SampleValue:
+    rows: dict[tuple[str, ...], str] = {}
+    for source, _ in parsed:
+        values = source.params.get("ifconfig-pool")
+        if not values or len(values) < 2:
+            continue
         try:
-            parsed = time.strptime(normalized, fmt)
+            start = int(ipaddress.ip_address(values[0]))
+            end = int(ipaddress.ip_address(values[1]))
         except ValueError:
             continue
-        return repr(float(time.mktime(parsed)))
-    raise ValueError(f"unrecognized timestamp {value!r}")
+        rows[(source.network, source.kind)] = repr(float(end - start + 1))
+    return MultiLabeledSample(CLIENT_LABELS, rows)
+
+
+def _config_info(parsed: list[ParsedSource]) -> SampleValue:
+    rows: dict[tuple[str, ...], str] = {}
+    for source, _ in parsed:
+        labels = tuple(param(source.params, key) or "" for key in INFO_KEYS)
+        rows[(source.network, source.kind, *labels)] = "1.0"
+    return MultiLabeledSample(INFO_LABELS, rows)
+
+
+def _max_bcast_mcast_queue(parsed: list[ParsedSource]) -> SampleValue:
+    rows: dict[tuple[str, ...], str] = {}
+    for source, data in parsed:
+        if data is None or source.kind != "server":
+            continue
+        value = _number(data.global_stats.get(MAX_QUEUE_KEY))
+        if value is not None:
+            rows[(source.network, source.kind)] = value
+    return MultiLabeledSample(CLIENT_LABELS, rows)
+
+
+COMMANDS: dict[str, Callable[[list[ParsedSource]], SampleValue]] = {
+    "openvpn.up": _up,
+    "openvpn.status_path": _status_path,
+    "openvpn.status_update_time": _status_update_time,
+    "openvpn.server.connected_clients": _connected_clients,
+    "openvpn.server.route_last_reference": _route,
+    "openvpn.server.max_bcast_mcast_queue_length": _max_bcast_mcast_queue,
+    "openvpn.config.pool_size": _config_pool_size,
+    "openvpn.config.info": _config_info,
+    **{command: _client_counter(command) for command in CLIENT_COLUMNS},
+    **{command: _server_client(command) for command in SERVER_CLIENT_COLUMNS},
+    **{
+        command: _config_number(key, index)
+        for command, (key, index) in CONFIG_NUMBERS.items()
+    },
+    **{command: _config_flag(key) for command, key in CONFIG_FLAGS.items()},
+}
+
+
+def is_known_command(command: str) -> bool:
+    return command in COMMANDS
 
 
 class OpenVpnMetricHandler(MetricHandler):
-    """Handler that parses OpenVPN status files.
+    """OpenVPN status handler.
 
-    Each metric's `cmd` holds the status file path(s) of the OpenVPN
-    `--status` file(s) to read: either a JSON array of paths or a single
-    space-separated string. The format is auto-detected
-    from the file's first line: the classic `OpenVPN CLIENT LIST`
-    (status version 1), server `--status-version 2` and 3, and client
-    statistics are all supported. Server parsing mirrors the
-    kumina/openvpn_exporter; version 1 rows are normalized to the same
-    shape (timestamps converted to epoch, absent columns left empty).
-    Metric names select the data; the exposed families mirror that
-    exporter (with the repository's `sms_` prefix).
-
-    A status file that is missing, unreadable or malformed reports
-    `sms_openvpn_up{status_path}=0` and yields no other samples for
-    that path (a warning is logged); it never fails the cycle.
-
-    When the `OPENVPN_STATUS_PATH` env var is set, it overrides the
-    paths from the config (a JSON array or a space-separated string),
-    so installs can point the shipped config at their status files
-    without editing every entry.
+    Config paths come from `OPENVPN_CONFIG_PATH` and status paths from
+    `OPENVPN_STATUS_PATH`, both arrays of paths. Each config must set
+    `status-version 3`; `mode server` marks a server config, anything
+    else is a client. Metrics in `data/config/openvpn.json` name an
+    `openvpn.*` command that extracts the value on demand.
     """
 
     required_fields: ClassVar[list[str]] = ["cmd"]
 
-    def _parse(self) -> list[Metric]:
-        """Accept `cmd` as a path list as well as a command-line string.
-
-        A JSON array is joined with shell quoting so the inherited
-        verification and path handling can keep treating `cmd` as a
-        string (paths containing spaces survive the round-trip).
-        """
-        metrics = super()._parse()
-        for metric in metrics:
-            cmd = metric.cmd
-            if isinstance(cmd, list):
-                metric.cmd = shlex.join(str(path) for path in cmd)
-        return metrics
-
     async def verify(self, metrics: list[Metric]) -> None:
         await super().verify(metrics)
         unknown = sorted(
-            {m.name for m in metrics if m.name not in KNOWN_METRICS}
+            {m.cmd for m in metrics if not is_known_command(m.cmd)}
         )
         if unknown:
-            msg = f"Invalid config {self.config_path}:\n" + "\n".join(
-                f"  - metric {name!r}: unknown openvpn metric"
-                for name in unknown
+            raise ValueError(
+                f"Invalid config {self.config_path}: unknown openvpn "
+                f"commands: {unknown}"
             )
-            log.error(msg)
-            raise ValueError(msg)
+
+    def sources(self) -> list[Source]:
+        """Build the valid config/status sources.
+
+        Config and status paths are matched by position. A config
+        without `status-version 3` is skipped (it is mandatory and only
+        one version is supported).
+        """
+        configs = env_list(CONFIG_PATHS_ENV)
+        statuses = env_list(STATUS_PATHS_ENV)
+        if configs and len(configs) != len(statuses):
+            log.warning(
+                "openvpn: %s has %d paths but %s has %d",
+                CONFIG_PATHS_ENV,
+                len(configs),
+                STATUS_PATHS_ENV,
+                len(statuses),
+            )
+        sources: list[Source] = []
+        for index, status_path in enumerate(statuses):
+            config_path = configs[index] if index < len(configs) else ""
+            config_text = read_text(config_path) if config_path else None
+            params = {} if config_text is None else parse_key_value(config_text)
+            if not param_is(params, STATUS_VERSION_KEY, STATUS_VERSION):
+                log.warning(
+                    "openvpn: %r is not status-version 3, skipping",
+                    config_path or status_path,
+                )
+                continue
+            kind = (
+                "server"
+                if param_is(params, MODE_KEY, MODE_SERVER)
+                else "client"
+            )
+            sources.append(
+                Source(
+                    network=path_stem(config_path) or path_stem(status_path),
+                    params=params,
+                    status_path=status_path,
+                    kind=kind,
+                )
+            )
+        return sources
+
+    def parsed(self) -> list[ParsedSource]:
+        """Every source with its parsed status data (None on failure)."""
+        result: list[ParsedSource] = []
+        for source in self.sources():
+            text = read_text(source.status_path)
+            data = _PARSERS[source.kind](text) if text is not None else None
+            result.append((source, data))
+        return result
 
     async def execute(self, metrics: list[Metric]) -> dict[str, SampleValue]:
-        override = _status_path_override()
-        paths: list[str] = list(override)
-        if not paths:
-            for m in metrics:
-                for path in _paths(m):
-                    if path not in paths:
-                        paths.append(path)
-        parsed: dict[str, ParsedStatus] = {}
-        for path in paths:
-            timeout = _timeout_for(path, metrics, override)
-            parsed[path] = await self._parse_path(path, timeout)
-        return self._collect(metrics, parsed)
-
-    async def finalize(
-        self,
-        metrics: list[Metric],
-        results: dict[str, SampleValue],
-    ) -> str:
-        """Render only the families that actually produced samples.
-
-        A status file is either client or server format, so the
-        configured families for the other kind have no rows. Emitting
-        their HELP/TYPE with no samples is noise; drop them instead.
-        """
-        missing = [m.name for m in metrics if m.name not in results]
-        if missing:
-            raise ValueError(f"No results for metrics: {missing}")
-        kept = [m for m in metrics if not _is_empty_sample(results[m.name])]
-        return self.support.render_exposition(kept, results)
-
-    async def _parse_path(self, path: str, timeout: float) -> ParsedStatus:
-        try:
-            text = await asyncio.wait_for(
-                asyncio.to_thread(_read_file, path), timeout
-            )
-        except (OSError, TimeoutError) as e:
-            log.warning("openvpn: reading %r failed: %s", path, e)
-            return ParsedStatus(error=str(e))
-        try:
-            return self._parse_text(text)
-        except ValueError as e:
-            log.warning("openvpn: parsing %r failed: %s", path, e)
-            return ParsedStatus(error=str(e))
-
-    def _parse_text(self, text: str) -> ParsedStatus:
-        first = text.splitlines()[0] if text else ""
-        if first.startswith("TITLE,"):
-            return self._parse_server(text, ",")
-        if first.startswith("TITLE\t"):
-            return self._parse_server(text, "\t")
-        if first.startswith("OpenVPN CLIENT LIST"):
-            return self._parse_server_v1(text)
-        if first.startswith("OpenVPN STATISTICS"):
-            return self._parse_client(text)
-        raise ValueError(f"unexpected file contents: {first[:40]!r}")
-
-    def _parse_client(self, text: str) -> ParsedStatus:
-        parsed = ParsedStatus(kind="client")
-        for line in text.splitlines():
-            fields = line.split(",")
-            key = fields[0]
-            if key == "END" and len(fields) == 1:
-                continue
-            if key == "OpenVPN STATISTICS" and len(fields) == 1:
-                continue
-            if key == "Updated" and len(fields) == 2:
-                parsed.update_time = _asctime_to_epoch(fields[1])
-                continue
-            if key in _CLIENT_KEYS and len(fields) == 2:
-                parsed.client[key] = self.support.parse_value(
-                    "openvpn", fields[1]
-                )
-                continue
-            raise ValueError(f"unsupported key {key!r}")
-        return parsed
-
-    def _parse_server(self, text: str, separator: str) -> ParsedStatus:
-        parsed = ParsedStatus(kind="server")
-        headers: dict[str, list[str]] = {}
-        for line in text.splitlines():
-            fields = line.split(separator)
-            key = fields[0]
-            if key == "END" and len(fields) == 1:
-                continue
-            if key == "GLOBAL_STATS":
-                continue
-            if key == "HEADER" and len(fields) > 2:
-                headers[fields[1]] = fields[2:]
-                continue
-            if key == "TIME" and len(fields) == 3:
-                parsed.update_time = self.support.parse_value(
-                    "openvpn", fields[2]
-                )
-                continue
-            if key == "TITLE" and len(fields) == 2:
-                continue
-            if key == "CLIENT_LIST":
-                parsed.connected_clients += 1
-                parsed.server_clients.append(
-                    self._server_row(
-                        fields, headers.get("CLIENT_LIST"), 1, "CLIENT_LIST"
-                    )
-                )
-                continue
-            if key == "ROUTING_TABLE":
-                parsed.server_routes.append(
-                    self._server_row(
-                        fields, headers.get("ROUTING_TABLE"), 1, "ROUTING_TABLE"
-                    )
-                )
-                continue
-            raise ValueError(f"unsupported key {key!r}")
-        return parsed
-
-    def _parse_server_v1(self, text: str) -> ParsedStatus:
-        """Parse the classic `OpenVPN CLIENT LIST` status format.
-
-        This format has no HEADER directives; column names appear as the
-        section's first row and rows have no table-name prefix. Rows are
-        normalized to the same shape as the v2/v3 format: timestamps are
-        converted to epoch and missing columns (virtual address,
-        username) are left empty.
-        """
-        parsed = ParsedStatus(kind="server")
-        section: str | None = None
-        header: list[str] | None = None
-        for line in text.splitlines():
-            if not line:
-                continue
-            fields = line.split(",")
-            key = fields[0]
-            if key == "OpenVPN CLIENT LIST":
-                section, header = None, None
-                continue
-            if key == "ROUTING TABLE":
-                section, header = "routing", None
-                continue
-            if key == "GLOBAL STATS":
-                section, header = "global", None
-                continue
-            if key == "END":
-                continue
-            if key == "Updated" and len(fields) == 2:
-                parsed.update_time = _asctime_to_epoch(fields[1])
-                continue
-            if section == "global":
-                continue
-            if header is None:
-                header = fields
-                if section is None:
-                    section = "client"
-                continue
-            if section == "client":
-                parsed.connected_clients += 1
-                parsed.server_clients.append(
-                    self._server_row_v1(fields, header, "CLIENT_LIST")
-                )
-                continue
-            if section == "routing":
-                parsed.server_routes.append(
-                    self._server_row_v1(fields, header, "ROUTING_TABLE")
-                )
-                continue
-            raise ValueError(f"unsupported key {key!r}")
-        return parsed
-
-    def _server_row_v1(
-        self, fields: list[str], columns: list[str], table: str
-    ) -> dict[str, str]:
-        row = self._server_row(fields, columns, 0, table)
-        since = row.get("Connected Since")
-        if since:
-            row["Connected Since (time_t)"] = _asctime_to_epoch(since)
-        last_ref = row.get("Last Ref")
-        if last_ref:
-            row["Last Ref (time_t)"] = _asctime_to_epoch(last_ref)
-        row.setdefault("Virtual Address", "")
-        row.setdefault("Username", "")
-        return row
-
-    def _server_row(
-        self,
-        fields: list[str],
-        columns: list[str] | None,
-        offset: int,
-        table: str,
-    ) -> dict[str, str]:
-        if columns is None:
-            raise ValueError(f"{table} should be preceded by HEADER")
-        if len(fields) != len(columns) + offset:
-            raise ValueError(
-                f"HEADER for {table} describes a different number of columns"
-            )
-        row = {columns[i]: fields[i + offset] for i in range(len(columns))}
-        for column in _SERVER_METRIC_COLUMNS & row.keys():
-            row[column] = self.support.parse_value("openvpn", row[column])
-        return row
-
-    def _collect(
-        self,
-        metrics: list[Metric],
-        parsed: dict[str, ParsedStatus],
-    ) -> dict[str, SampleValue]:
-        return {m.name: self._value_for(m, parsed) for m in metrics}
-
-    def _value_for(
-        self,
-        m: Metric,
-        parsed: dict[str, ParsedStatus],
-    ) -> SampleValue:
-        if m.name == STATUS_PATH_METRIC:
-            return MultiLabeledSample(
-                [STATUS_PATH_LABEL, TYPE_LABEL],
-                {
-                    (path, st.kind or TYPE_UNKNOWN): (
-                        "0.0" if st.error else "1.0"
-                    )
-                    for path, st in parsed.items()
-                },
-            )
-        if m.name == UP:
-            up: dict[str, bool] = {}
-            for status in parsed.values():
-                kind = status.kind or TYPE_UNKNOWN
-                up[kind] = up.get(kind, False) or not status.error
-            return MultiLabeledSample(
-                [TYPE_LABEL],
-                {(kind,): ("1.0" if ok else "0.0") for kind, ok in up.items()},
-            )
-        if m.name == SERVER_UP:
-            return self._role_up(parsed, TYPE_SERVER)
-        if m.name == CLIENT_UP:
-            return self._role_up(parsed, TYPE_CLIENT)
-        if m.name == STATUS_UPDATE_TIME:
-            return MultiLabeledSample(
-                [TYPE_LABEL],
-                {
-                    (st.kind,): st.update_time
-                    for st in parsed.values()
-                    if not st.error and st.update_time is not None
-                },
-            )
-        if m.name == CONNECTED_CLIENTS:
-            connected: dict[tuple[str, ...], str] = {}
-            for status in parsed.values():
-                if status.kind == TYPE_SERVER and not status.error:
-                    connected[(TYPE_SERVER,)] = repr(
-                        float(status.connected_clients)
-                    )
-            return MultiLabeledSample([TYPE_LABEL], connected)
-        if m.name == ROUTE_METRIC:
-            return MultiLabeledSample(
-                _ROUTE_LABELS,
-                self._rows(
-                    parsed,
-                    "server_routes",
-                    _ROUTE_COLUMNS,
-                    _ROUTE_COLUMN,
-                ),
-            )
-        if m.name in SERVER_CLIENT_METRICS:
-            column = SERVER_CLIENT_METRICS[m.name]
-            return MultiLabeledSample(
-                _SERVER_CLIENT_LABELS,
-                self._rows(
-                    parsed,
-                    "server_clients",
-                    _SERVER_CLIENT_COLUMNS,
-                    column,
-                ),
-            )
-        key = CLIENT_COUNTERS[m.name]
-        counters: dict[tuple[str, ...], str] = {}
-        for status in parsed.values():
-            if (
-                status.kind == TYPE_CLIENT
-                and not status.error
-                and key in status.client
-            ):
-                counters[(TYPE_CLIENT,)] = status.client[key]
-        return MultiLabeledSample([TYPE_LABEL], counters)
-
-    def _role_up(
-        self,
-        parsed: dict[str, ParsedStatus],
-        role: str,
-    ) -> MultiLabeledSample:
-        values: dict[tuple[str, ...], str] = {}
-        for status in parsed.values():
-            if status.kind == role:
-                values[(role,)] = "1.0" if not status.error else "0.0"
-        return MultiLabeledSample([TYPE_LABEL], values)
-
-    def _rows(
-        self,
-        parsed: dict[str, ParsedStatus],
-        attr: str,
-        label_columns: list[str],
-        value_column: str,
-    ) -> dict[tuple[str, ...], str]:
-        rows: dict[tuple[str, ...], str] = {}
-        for status in parsed.values():
-            if status.kind != TYPE_SERVER or status.error:
-                continue
-            for row in getattr(status, attr):
-                value = row.get(value_column)
-                if value is None:
-                    continue
-                label_key = (
-                    TYPE_SERVER,
-                    *(row.get(c, "") for c in label_columns),
-                )
-                if label_key not in rows:
-                    rows[label_key] = value
-        return rows
+        parsed = await asyncio.to_thread(self.parsed)
+        return {m.name: COMMANDS[m.cmd](parsed) for m in metrics}

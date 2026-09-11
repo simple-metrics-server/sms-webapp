@@ -1,13 +1,22 @@
 import asyncio
 import logging
 import os
+import platform
 import pwd
+import shutil
 from collections.abc import Callable
 from functools import partial
 from typing import TYPE_CHECKING
 
-from webapp.core.model import LabeledSample, Metric, SampleValue
+from webapp.common.model import LabeledSample, Metric, SampleValue
 from webapp.core.process import ProcessRunner
+from webapp.helpers.util import (
+    read_text,
+    run_command,
+    run_command_status,
+    to_float,
+    to_int,
+)
 
 if TYPE_CHECKING:
     from webapp.core.runtime import Runtime
@@ -53,8 +62,15 @@ NETWORK_COMMANDS = {
     "builtin.network.transmitted_bytes",
 }
 
-# Debian-specific until the handler becomes platform-agnostic.
-REBOOT_REQUIRED_PATH = "/var/run/reboot-required"
+# Debian and Red Hat (RHEL/Alma/Rocky/Fedora) families are supported.
+DEBIAN_IDS = {"debian", "ubuntu", "linuxmint", "raspbian", "pop"}
+RHEL_IDS = {"rhel", "fedora", "centos", "almalinux", "rocky", "ol", "amzn"}
+REBOOT_REQUIRED_PATHS = (
+    "/run/reboot-required",
+    "/var/run/reboot-required",
+)
+NEEDS_RESTARTING = "needs-restarting"
+PACKAGE_MANAGERS = ("apt-get", "dnf", "yum")
 LOADAVG_PATH = "/proc/loadavg"
 MEMINFO_PATH = "/proc/meminfo"
 NETDEV_PATH = "/proc/net/dev"
@@ -203,14 +219,12 @@ def _network_sample(cmd: str, totals: tuple[int, int]) -> str:
 def _parse_loadavg(text: str) -> tuple[float, float, float]:
     """(1, 5, 15)-minute load averages from /proc/loadavg."""
     parts = text.split()
-    loads = [0.0, 0.0, 0.0]
-    for i in range(3):
-        if i < len(parts):
-            try:
-                loads[i] = float(parts[i])
-            except ValueError:
-                loads[i] = 0.0
-    return (loads[0], loads[1], loads[2])
+    a, b, c = (to_float(parts[i]) if i < len(parts) else None for i in range(3))
+    return (
+        a if a is not None else 0.0,
+        b if b is not None else 0.0,
+        c if c is not None else 0.0,
+    )
 
 
 def _parse_meminfo(text: str) -> dict[str, int]:
@@ -218,16 +232,13 @@ def _parse_meminfo(text: str) -> dict[str, int]:
     mem = {"total": 0, "available": 0}
     for line in text.splitlines():
         key, sep, rest = line.partition(":")
-        if not sep:
+        if not sep or key not in ("MemTotal", "MemAvailable"):
             continue
         parts = rest.split()
-        if not parts or key not in ("MemTotal", "MemAvailable"):
+        value = to_int(parts[0]) if parts else None
+        if value is None:
             continue
-        try:
-            value = int(parts[0]) * 1024
-        except ValueError:
-            continue
-        mem["total" if key == "MemTotal" else "available"] = value
+        mem["total" if key == "MemTotal" else "available"] = value * 1024
     mem["used"] = mem["total"] - mem["available"]
     return mem
 
@@ -242,11 +253,11 @@ def _parse_netdev(text: str) -> tuple[int, int]:
         fields = rest.split()
         if len(fields) < 16:
             continue
-        try:
-            rx += int(fields[0])
-            tx += int(fields[8])
-        except ValueError:
+        received, transmitted = to_int(fields[0]), to_int(fields[8])
+        if received is None or transmitted is None:
             continue
+        rx += received
+        tx += transmitted
     return rx, tx
 
 
@@ -257,12 +268,14 @@ def _parse_df(text: str) -> dict[str, int]:
         parts = line.split()
         if len(parts) < 4 or not parts[0].startswith("/dev/"):
             continue
-        try:
-            total += int(parts[1]) * 1024
-            used += int(parts[2]) * 1024
-            avail += int(parts[3]) * 1024
-        except ValueError:
+        total_kb = to_int(parts[1])
+        used_kb = to_int(parts[2])
+        avail_kb = to_int(parts[3])
+        if total_kb is None or used_kb is None or avail_kb is None:
             continue
+        total += total_kb * 1024
+        used += used_kb * 1024
+        avail += avail_kb * 1024
     return {"total": total, "used": used, "available": avail}
 
 
@@ -273,25 +286,12 @@ async def _safe_run(
     runner: ProcessRunner, argv: list[str], timeout: float
 ) -> str:
     """Run a command, returning "" and logging on failure."""
-    try:
-        return await runner.run(argv, timeout)
-    except (RuntimeError, ValueError) as e:
-        log.warning("builtin command %r failed: %s", argv, e)
-        return ""
+    return await run_command(runner, argv, timeout) or ""
 
 
 async def _read_text(path: str) -> str:
     """Read a file, returning "" and logging on failure."""
-    try:
-        return await asyncio.to_thread(_load_text, path)
-    except OSError as e:
-        log.warning("builtin read %r failed: %s", path, e)
-        return ""
-
-
-def _load_text(path: str) -> str:
-    with open(path, encoding="utf-8") as f:
-        return f.read()
+    return await asyncio.to_thread(read_text, path) or ""
 
 
 def _max_timeout(metrics: list[Metric]) -> float:
@@ -331,14 +331,84 @@ async def _count_processes(runner: ProcessRunner, metrics: list[Metric]) -> int:
     return max(0, len(lines) - 1)
 
 
+def _distro_family() -> str | None:
+    """Return "debian", "rhel" or None based on /etc/os-release."""
+    try:
+        release = platform.freedesktop_os_release()
+    except OSError:
+        return None
+    ids = {release.get("ID", "").lower()}
+    ids.update(release.get("ID_LIKE", "").lower().split())
+    if ids & DEBIAN_IDS:
+        return "debian"
+    if ids & RHEL_IDS:
+        return "rhel"
+    return None
+
+
+def _package_manager() -> str | None:
+    """First available package manager for this distribution."""
+    family = _distro_family() or ""
+    candidates = {
+        "debian": ("apt-get",),
+        "rhel": ("dnf", "yum"),
+    }.get(family, PACKAGE_MANAGERS)
+    return next((name for name in candidates if shutil.which(name)), None)
+
+
+def _count_check_update(stdout: str) -> int:
+    """Count upgrade entries in `dnf`/`yum check-update` output."""
+    count = 0
+    obsoleting = False
+    for line in stdout.splitlines():
+        if not line.strip():
+            obsoleting = False
+        elif line.startswith("Obsoleting Packages"):
+            obsoleting = True
+        elif not obsoleting:
+            count += 1
+    return count
+
+
 async def _count_upgradable(
     runner: ProcessRunner, metrics: list[Metric]
 ) -> int:
-    """Number of upgradable packages from `apt-get -s upgrade`."""
-    stdout = await _safe_run(
-        runner, ["apt-get", "-s", "upgrade"], _max_timeout(metrics)
+    """Number of upgradable packages (apt-get or dnf/yum)."""
+    manager = _package_manager()
+    timeout = _max_timeout(metrics)
+    if manager == "apt-get":
+        stdout = await _safe_run(runner, ["apt-get", "-s", "upgrade"], timeout)
+        return sum(
+            1 for line in stdout.splitlines() if line.startswith("Inst ")
+        )
+    if manager is None:
+        return 0
+    result = await run_command_status(
+        runner, [manager, "-q", "check-update"], timeout
     )
-    return sum(1 for line in stdout.splitlines() if line.startswith("Inst "))
+    if result is None:
+        return 0
+    code, stdout = result
+    # dnf/yum exit 100 when updates are available, 0 when there are none.
+    return _count_check_update(stdout) if code in (0, 100) else 0
+
+
+async def _reboot_required(
+    runner: ProcessRunner, metrics: list[Metric]
+) -> bool:
+    """True if the host is flagged for a reboot.
+
+    Debian writes `/run/reboot-required`; on the Red Hat family
+    `needs-restarting -r` (dnf-utils) exits 1 when a reboot is due.
+    """
+    if any(os.path.exists(path) for path in REBOOT_REQUIRED_PATHS):
+        return True
+    if not shutil.which(NEEDS_RESTARTING):
+        return False
+    result = await run_command_status(
+        runner, [NEEDS_RESTARTING, "-r"], _max_timeout(metrics)
+    )
+    return result is not None and result[0] == 1
 
 
 async def collect(
@@ -383,7 +453,8 @@ async def collect(
 
     reboot_metrics = [m for m in metrics if m.cmd == REBOOT_COMMAND]
     if reboot_metrics:
-        value = "1.0" if os.path.exists(REBOOT_REQUIRED_PATH) else "0.0"
+        needed = await _reboot_required(runner, reboot_metrics)
+        value = "1.0" if needed else "0.0"
         for m in reboot_metrics:
             out[m.name] = value
 

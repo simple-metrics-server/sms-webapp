@@ -1,11 +1,11 @@
 import asyncio
 import json
-import os
 from abc import ABC, abstractmethod
 from typing import ClassVar
 
-from webapp.core.helpers import HandlerSupport
-from webapp.core.model import Metric, SampleValue
+from webapp.common.model import Metric, SampleValue
+from webapp.helpers import HandlerSupport
+from webapp.helpers.util import read_text
 
 
 class MetricHandler(ABC):
@@ -38,10 +38,10 @@ class MetricHandler(ABC):
         return await asyncio.to_thread(self._parse)
 
     def _parse(self) -> list[Metric]:
-        if not os.path.exists(self.config_path):
+        text = read_text(self.config_path)
+        if text is None:
             raise FileNotFoundError(f"Config not found: {self.config_path}")
-        with open(self.config_path, "r", encoding="utf-8") as f:
-            obj = json.load(f)
+        obj = json.loads(text)
         if not isinstance(obj, list):
             raise TypeError(f"Config must be a JSON array: {self.config_path}")
         try:

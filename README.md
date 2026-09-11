@@ -47,9 +47,10 @@ Minimal — any headless box works:
   client auth.
 - Self-signed certificates trigger browser/curl warnings; use
   `curl -k` or pass a CA-signed pair via `--cert`/`--key`.
-- Two OS probes (`os.packages_upgradable`, `os.reboot_required`) are
-  Debian-specific and report `0.0` elsewhere; probe failures never
-  crash the app.
+- The package and reboot probes support Debian (`apt-get`, reboot-required
+  file) and the Red Hat family (`dnf`/`yum`, `needs-restarting`); on
+  unsupported systems they report `0.0`. Probe failures never crash the
+  app.
 - Handler commands run **without a shell** — no pipes, `&&` or
   redirections in `cmd`.
 - `data/` holds configs plus runtime artifacts (`metrics.cache`,
@@ -119,15 +120,17 @@ cycle, no restart):
 }
 ```
 
-Point the OpenVPN handler at a status file on a non-standard path
-(space-separated for several; no config edits needed):
+Collect OpenVPN metrics — point the handler at the config and status
+files (paired by position; both are lists):
 
 ```bash
-OPENVPN_STATUS_PATH=/var/lib/openvpn/status/server.log just start
+OPENVPN_CONFIG_PATH=/etc/openvpn/tortuga.conf \
+OPENVPN_STATUS_PATH=/var/log/tortuga-status.log \
+    just start
 ```
 
-See [handlers](docs/handlers.md#openvpn--webapphandlersopenvpny) for
-the OpenVPN metric reference.
+See [handler-openvpn.md](docs/handler-openvpn.md) for the metric and
+command reference.
 
 ## Further documentation
 
@@ -136,8 +139,11 @@ Detailed topic READMEs live in [docs/](docs/):
 - [Architecture](docs/architecture.md) — how a scrape works, failure
   semantics, module tour
 - [Handlers](docs/handlers.md) — writing and configuring handlers
-- [Builtin commands](docs/builtin-commands.md) — runtime/OS/hardware
+- [handler-bash.md](docs/handler-bash.md) — command-per-metric handler
+- [handler-builtin.md](docs/handler-builtin.md) — runtime/OS/hardware
   probes reference
+- [handler-openvpn.md](docs/handler-openvpn.md) — OpenVPN status
+  handler, `network`/`type` labels and `openvpn.*` commands
 - [CLI](docs/cli.md) — all options, HTTPS preflight, systemd
   install/uninstall
 

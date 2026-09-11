@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from webapp.core.model import DistributionSample, Metric
+from webapp.common.model import DistributionSample, Metric
 from webapp.core.runtime import Runtime
 from webapp.handlers.bash import BashMetricHandler
 

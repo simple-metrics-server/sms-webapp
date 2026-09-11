@@ -3,11 +3,11 @@ import logging
 import os
 from pathlib import Path
 
+from webapp.common.model import Metric
+from webapp.common.timing import HandlerTimings, ScrapeTimings, measure
 from webapp.core.base import MetricHandler
-from webapp.core.helpers import series_names
 from webapp.core.loader import load_handlers
-from webapp.core.model import Metric
-from webapp.core.timing import HandlerTimings, ScrapeTimings, measure
+from webapp.helpers.exposition import series_names
 
 log = logging.getLogger(__name__)
 

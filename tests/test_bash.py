@@ -3,8 +3,8 @@ import json
 
 import pytest
 
-from webapp.core.helpers import HandlerSupport
 from webapp.handlers.bash import BashMetricHandler
+from webapp.helpers import HandlerSupport
 
 
 def make_config(tmp_path, metrics, name="cfg.json"):

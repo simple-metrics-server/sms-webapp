@@ -3,12 +3,22 @@ import time
 
 import pytest
 
-from webapp.core.helpers import HandlerSupport
-from webapp.core.model import (
+from webapp.common.model import (
     DistributionSample,
     LabeledSample,
     Metric,
     MultiLabeledSample,
+)
+from webapp.helpers import HandlerSupport
+from webapp.helpers.util import (
+    env_list,
+    env_string,
+    map_row,
+    param,
+    param_is,
+    parse_key_value,
+    path_stem,
+    read_text,
 )
 
 
@@ -490,3 +500,85 @@ def test_render_exposition_multi_labeled_empty():
     assert out == (
         "# HELP test_users Sessions per user\n# TYPE test_users gauge\n\n"
     )
+
+
+# --- env helpers ---
+
+
+def test_env_string(monkeypatch):
+    monkeypatch.setenv("TEST_ENV_STR", "hello")
+    assert env_string("TEST_ENV_STR") == "hello"
+    assert env_string("TEST_ENV_MISSING", "fallback") == "fallback"
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ('["/a.log", "/b.log"]', ["/a.log", "/b.log"]),
+        ("[/a.log, /b.log]", ["/a.log", "/b.log"]),
+        ("/a.log,/b.log", ["/a.log", "/b.log"]),
+        ('"/a b.log",/c.log', ["/a b.log", "/c.log"]),
+        ("/a.log /b.log", ["/a.log", "/b.log"]),
+        ("", []),
+    ],
+)
+def test_env_list(monkeypatch, raw, expected):
+    monkeypatch.setenv("TEST_ENV_LIST", raw)
+    assert env_list("TEST_ENV_LIST") == expected
+
+
+def test_env_list_default(monkeypatch):
+    monkeypatch.delenv("TEST_ENV_LIST", raising=False)
+    assert env_list("TEST_ENV_LIST", ["x"]) == ["x"]
+
+
+def test_parse_key_value():
+    text = "port 1194\nproto udp\nstatus /run/status.log 10\nempty\n\n"
+    assert parse_key_value(text) == {
+        "port": ["1194"],
+        "proto": ["udp"],
+        "status": ["/run/status.log", "10"],
+        "empty": [],
+    }
+
+
+def test_param_and_param_is():
+    params = {"mode": ["server"], "status": ["/run/s.log", "10"]}
+    assert param(params, "mode") == "server"
+    assert param(params, "status", 1) == "10"
+    assert param(params, "missing") is None
+    assert param(params, "mode", 5) is None
+    assert param_is(params, "mode", "server") is True
+    assert param_is(params, "mode", "client") is False
+
+
+def test_path_stem():
+    assert path_stem("/etc/openvpn/tortuga.conf") == "tortuga"
+    assert path_stem("status.log") == "status"
+    assert path_stem("/run/openvpn") == "openvpn"
+
+
+def test_read_text(tmp_path):
+    path = tmp_path / "x.txt"
+    path.write_text("hello", encoding="utf-8")
+    assert read_text(str(path)) == "hello"
+    assert read_text(str(tmp_path / "missing.txt")) is None
+
+
+def test_map_row():
+    columns = ["Common Name", "Bytes Received"]
+    assert map_row(["CLIENT_LIST", "alice", "100"], columns) == {
+        "Common Name": "alice",
+        "Bytes Received": "100",
+    }
+    assert map_row(["alice", "100"], columns, offset=0) == {
+        "Common Name": "alice",
+        "Bytes Received": "100",
+    }
+
+
+def test_map_row_errors():
+    with pytest.raises(ValueError, match="header"):
+        map_row(["CLIENT_LIST", "alice"], None)
+    with pytest.raises(ValueError, match="column count"):
+        map_row(["CLIENT_LIST", "alice"], ["Common Name", "Bytes"])
