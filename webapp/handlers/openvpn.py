@@ -184,8 +184,14 @@ def _timestamp(value: str) -> str | None:
     number = _number(value)
     if number is not None:
         return number
-    parsed = time.strptime(" ".join(value.split()), "%a %b %d %H:%M:%S %Y")
-    return repr(float(time.mktime(parsed)))
+    normalized = " ".join(value.split())
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%a %b %d %H:%M:%S %Y"):
+        try:
+            parsed = time.strptime(normalized, fmt)
+        except ValueError:
+            continue
+        return repr(float(time.mktime(parsed)))
+    return None
 
 
 # --- metric extractors (openvpn.<command> -> SampleValue) ---

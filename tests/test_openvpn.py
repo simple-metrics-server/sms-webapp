@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 
 import pytest
 
@@ -28,6 +29,12 @@ SERVER_V3 = (
 
 CLIENT_STATUS = """OpenVPN STATISTICS
 Updated,Tue Mar 21 10:39:09 2017
+TUN/TAP read bytes,153789941
+END
+"""
+
+CLIENT_STATUS_ISO = """OpenVPN STATISTICS
+Updated,2026-09-11 20:44:00
 TUN/TAP read bytes,153789941
 END
 """
@@ -149,6 +156,21 @@ def test_execute_client_counter(monkeypatch, tmp_path):
     out = run_cycle(OpenVpnMetricHandler(cfg))
     assert (
         'sms_openvpn_test_1{network="client",type="client"} 153789941.0' in out
+    )
+
+
+def test_execute_client_iso_update_time(monkeypatch, tmp_path):
+    config = write(tmp_path, "client.conf", "status-version 3\n")
+    status = write(tmp_path, "client-status.log", CLIENT_STATUS_ISO)
+    monkeypatch.setenv(CONFIG_PATHS_ENV, config)
+    monkeypatch.setenv(STATUS_PATHS_ENV, status)
+    cfg = make_config(tmp_path, ["openvpn.status_update_time"])
+    out = run_cycle(OpenVpnMetricHandler(cfg))
+    parsed = time.strptime("2026-09-11 20:44:00", "%Y-%m-%d %H:%M:%S")
+    expected = repr(float(time.mktime(parsed)))
+    assert (
+        f'sms_openvpn_test_0{{network="client",type="client"}} {expected}'
+        in out
     )
 
 
