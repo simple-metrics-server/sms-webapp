@@ -8,6 +8,7 @@ from webapp.handlers.openvpn import (
     CONFIG_PATHS_ENV,
     STATUS_PATHS_ENV,
     OpenVpnMetricHandler,
+    cert_common_name,
     is_known_command,
     parse_client_status,
     parse_server_status,
@@ -37,6 +38,22 @@ CLIENT_STATUS_ISO = """OpenVPN STATISTICS
 Updated,2026-09-11 20:44:00
 TUN/TAP read bytes,153789941
 END
+"""
+
+CLIENT_CERT = """-----BEGIN CERTIFICATE-----
+MIIBJTCBzKADAgECAhRRbOYb6VqgDFgu+MKxy4bFmYo7SjAKBggqhkjOPQQDAjAT
+MREwDwYDVQQDDAhiYXJib3NzYTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAw
+MDBaMBMxETAPBgNVBAMMCGJhcmJvc3NhMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcD
+QgAEWllYpx3jpv5NFjjR/wggr1U+/Tkxz30UIv5FQ5DxH5yWQtkr0zuzIjrBwDdA
+XECiCigE57X2PYrCMQHnQPWTRTAKBggqhkjOPQQDAgNIADBFAiEAvnSvX4cFUcNr
+n6fiM7FgVzPPyGHZl85BoHlI8/UoQ6QCIDjhWxCa9kuozWDWJEFmmzFYRTCNO00V
+0Wf46udZPzVH
+-----END CERTIFICATE-----"""
+
+CLIENT_CONFIG_WITH_CERT = f"""status-version 3
+<cert>
+{CLIENT_CERT}
+</cert>
 """
 
 
@@ -88,6 +105,35 @@ def test_parse_client_status():
 def test_is_known_command():
     assert is_known_command("openvpn.up")
     assert not is_known_command("openvpn.nope")
+
+
+def test_cert_common_name():
+    assert cert_common_name(CLIENT_CONFIG_WITH_CERT) == "barbossa"
+    assert cert_common_name("status-version 3\n") == ""
+    assert cert_common_name("<cert>\nnot a pem\n</cert>\n") == ""
+
+
+def test_sources_client_common_name(monkeypatch, tmp_path):
+    config = write(tmp_path, "tortuga.conf", CLIENT_CONFIG_WITH_CERT)
+    status = write(tmp_path, "client-status.log", CLIENT_STATUS)
+    monkeypatch.setenv(CONFIG_PATHS_ENV, config)
+    monkeypatch.setenv(STATUS_PATHS_ENV, status)
+    sources = OpenVpnMetricHandler("unused.json").sources()
+    assert len(sources) == 1
+    assert sources[0].common_name == "barbossa"
+
+
+def test_execute_client_up_common_name(monkeypatch, tmp_path):
+    config = write(tmp_path, "tortuga.conf", CLIENT_CONFIG_WITH_CERT)
+    status = write(tmp_path, "client-status.log", CLIENT_STATUS)
+    monkeypatch.setenv(CONFIG_PATHS_ENV, config)
+    monkeypatch.setenv(STATUS_PATHS_ENV, status)
+    cfg = make_config(tmp_path, ["openvpn.up"])
+    out = run_cycle(OpenVpnMetricHandler(cfg))
+    assert (
+        'sms_openvpn_test_0{network="tortuga",type="client",'
+        'common_name="barbossa"} 1.0' in out
+    )
 
 
 def test_sources_requires_status_version_3(monkeypatch, tmp_path):

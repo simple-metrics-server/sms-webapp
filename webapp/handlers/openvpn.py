@@ -1,10 +1,14 @@
 import asyncio
 import ipaddress
 import logging
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import ClassVar
+
+from cryptography import x509
+from cryptography.x509.oid import NameOID
 
 from webapp.common.model import Metric, MultiLabeledSample, SampleValue
 from webapp.core.base import MetricHandler
@@ -54,6 +58,8 @@ SERVER_CLIENT_COLUMNS = {
 }
 
 CLIENT_LABELS = [NETWORK_LABEL, TYPE_LABEL]
+UP_LABELS = [NETWORK_LABEL, TYPE_LABEL, "common_name"]
+"""`sms_openvpn_up` additionally carries the client certificate CN."""
 SERVER_CLIENT_LABELS = [
     NETWORK_LABEL,
     TYPE_LABEL,
@@ -125,6 +131,7 @@ class Source:
     params: dict[str, list[str]]
     status_path: str
     kind: str
+    common_name: str = ""
 
 
 ParsedSource = tuple[Source, "StatusData | None"]
@@ -172,6 +179,28 @@ def parse_client_status(text: str) -> StatusData:
 
 _PARSERS = {"server": parse_server_status, "client": parse_client_status}
 
+_CERT_BLOCK = re.compile(r"<cert>(.*?)</cert>", re.DOTALL)
+
+
+def cert_common_name(config_text: str) -> str:
+    """Return the CN of the config's embedded `<cert>`, or `''`.
+
+    Client configs carry their certificate inline; the CN is the client
+    identity (e.g. `barbossa`) regardless of how the file is named.
+    """
+    match = _CERT_BLOCK.search(config_text)
+    if match is None:
+        return ""
+    try:
+        cert = x509.load_pem_x509_certificate(match.group(1).strip().encode())
+    except ValueError:
+        return ""
+    attributes = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+    if not attributes:
+        return ""
+    value = attributes[0].value
+    return value if isinstance(value, str) else value.decode()
+
 
 def _number(value: str | None) -> str | None:
     if value is None:
@@ -199,9 +228,9 @@ def _timestamp(value: str) -> str | None:
 
 def _up(parsed: list[ParsedSource]) -> SampleValue:
     return MultiLabeledSample(
-        CLIENT_LABELS,
+        UP_LABELS,
         {
-            (source.network, source.kind): (
+            (source.network, source.kind, source.common_name): (
                 "1.0" if data is not None else "0.0"
             )
             for source, data in parsed
@@ -448,12 +477,16 @@ class OpenVpnMetricHandler(MetricHandler):
                 if param_is(params, MODE_KEY, MODE_SERVER)
                 else "client"
             )
+            common_name = (
+                cert_common_name(config_text or "") if kind == "client" else ""
+            )
             sources.append(
                 Source(
                     network=path_stem(config_path) or path_stem(status_path),
                     params=params,
                     status_path=status_path,
                     kind=kind,
+                    common_name=common_name,
                 )
             )
         return sources

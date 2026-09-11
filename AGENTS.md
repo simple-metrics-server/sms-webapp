@@ -374,8 +374,10 @@ Server status files are tab-separated; client files use the classic
 `OpenVPN STATISTICS` key/value format. All data metrics carry
 `network` and `type`; the `status_path` label appears only on the
 dedicated `sms_openvpn_status_path` metric (value `1`/`0` per file).
-`sms_openvpn_up` tracks parse success and the `type` label carries the
-detected role. A missing, unreadable or malformed status file reports
+`sms_openvpn_up` tracks parse success and carries `common_name` (the CN
+of a client config's embedded certificate, empty when absent), while the
+`type` label carries the detected role. A missing, unreadable or
+malformed status file reports
 `sms_openvpn_up` `0.0` for that source and yields no other samples
 (warning only; the cycle succeeds).
 

@@ -34,6 +34,8 @@ yields no other samples for that source (a warning is logged); the
 cycle still succeeds.
 
 All data metrics carry `network` and `type` (`client`/`server`); the
+`sms_openvpn_up` metric additionally carries `common_name`, the CN of a
+client config's embedded certificate (empty when none is present). The
 status file path is exposed only by the dedicated
 `sms_openvpn_status_path` metric.
 
@@ -43,7 +45,7 @@ status file path is exposed only by the dedicated
 
 | Command | Default Metric Name | Type | Meaning |
 |---------|--------|------|---------|
-| `openvpn.up` | `sms_openvpn_up` | gauge | `1.0` when the status file parsed, else `0.0`; labels `network,type` |
+| `openvpn.up` | `sms_openvpn_up` | gauge | `1.0` when the status file parsed, else `0.0`; labels `network,type,common_name` (the CN of the config's embedded `<cert>`, empty when absent) |
 | `openvpn.status_path` | `sms_openvpn_status_path` | gauge | `1.0`/`0.0` per status file; labels `status_path,network,type` |
 | `openvpn.status_update_time` | `sms_openvpn_status_update_time_seconds` | gauge | UNIX timestamp of the last status update; labels `network,type` |
 
