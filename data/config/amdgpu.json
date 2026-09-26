@@ -1,0 +1,135 @@
+[
+    {
+        "name": "sms_amdgpu_up",
+        "help_text": "amd-smi reporting status (1 = data parsed, 0 = run failed)",
+        "value_type": "gauge",
+        "cmd": "amdgpu.up",
+        "timeout": 10
+    },
+    {
+        "name": "sms_amdgpu_power_usage_watts",
+        "help_text": "GPU power draw in watts",
+        "value_type": "gauge",
+        "cmd": "amdgpu.power_usage",
+        "timeout": 10
+    },
+    {
+        "name": "sms_amdgpu_hotspot_temperature_celsius",
+        "help_text": "GPU hotspot temperature in celsius",
+        "value_type": "gauge",
+        "cmd": "amdgpu.hotspot_temperature",
+        "timeout": 10
+    },
+    {
+        "name": "sms_amdgpu_memory_temperature_celsius",
+        "help_text": "GPU memory temperature in celsius",
+        "value_type": "gauge",
+        "cmd": "amdgpu.memory_temperature",
+        "timeout": 10
+    },
+    {
+        "name": "sms_amdgpu_gfx_utilization_percent",
+        "help_text": "Graphics utilization in percent",
+        "value_type": "gauge",
+        "cmd": "amdgpu.gfx_utilization",
+        "timeout": 10
+    },
+    {
+        "name": "sms_amdgpu_gfx_clock_mhz",
+        "help_text": "Graphics clock in MHz",
+        "value_type": "gauge",
+        "cmd": "amdgpu.gfx_clock",
+        "timeout": 10
+    },
+    {
+        "name": "sms_amdgpu_mem_utilization_percent",
+        "help_text": "Memory utilization in percent",
+        "value_type": "gauge",
+        "cmd": "amdgpu.mem_utilization",
+        "timeout": 10
+    },
+    {
+        "name": "sms_amdgpu_mem_clock_mhz",
+        "help_text": "Memory clock in MHz",
+        "value_type": "gauge",
+        "cmd": "amdgpu.mem_clock",
+        "timeout": 10
+    },
+    {
+        "name": "sms_amdgpu_encoder_utilization_percent",
+        "help_text": "Encoder utilization in percent",
+        "value_type": "gauge",
+        "cmd": "amdgpu.encoder_utilization",
+        "timeout": 10
+    },
+    {
+        "name": "sms_amdgpu_encoder_clock_mhz",
+        "help_text": "Encoder clock in MHz",
+        "value_type": "gauge",
+        "cmd": "amdgpu.encoder_clock",
+        "timeout": 10
+    },
+    {
+        "name": "sms_amdgpu_decoder_utilization_percent",
+        "help_text": "Decoder utilization in percent",
+        "value_type": "gauge",
+        "cmd": "amdgpu.decoder_utilization",
+        "timeout": 10
+    },
+    {
+        "name": "sms_amdgpu_decoder_clock_mhz",
+        "help_text": "Decoder clock in MHz",
+        "value_type": "gauge",
+        "cmd": "amdgpu.decoder_clock",
+        "timeout": 10
+    },
+    {
+        "name": "sms_amdgpu_throttled",
+        "help_text": "1.0 when the GPU reports a throttle state other than UNTHROTTLED",
+        "value_type": "gauge",
+        "cmd": "amdgpu.throttled",
+        "timeout": 10
+    },
+    {
+        "name": "sms_amdgpu_ecc_single_bit_total",
+        "help_text": "Single-bit ECC error count",
+        "value_type": "counter",
+        "cmd": "amdgpu.single_bit_ecc",
+        "timeout": 10
+    },
+    {
+        "name": "sms_amdgpu_ecc_double_bit_total",
+        "help_text": "Double-bit ECC error count",
+        "value_type": "counter",
+        "cmd": "amdgpu.double_bit_ecc",
+        "timeout": 10
+    },
+    {
+        "name": "sms_amdgpu_pcie_replay_total",
+        "help_text": "PCIe replay counter",
+        "value_type": "counter",
+        "cmd": "amdgpu.pcie_replay",
+        "timeout": 10
+    },
+    {
+        "name": "sms_amdgpu_vram_used_megabytes",
+        "help_text": "VRAM used in MB",
+        "value_type": "gauge",
+        "cmd": "amdgpu.vram_used",
+        "timeout": 10
+    },
+    {
+        "name": "sms_amdgpu_vram_total_megabytes",
+        "help_text": "VRAM total in MB",
+        "value_type": "gauge",
+        "cmd": "amdgpu.vram_total",
+        "timeout": 10
+    },
+    {
+        "name": "sms_amdgpu_pcie_bandwidth_megabits_per_second",
+        "help_text": "PCIe bandwidth in Mb/s",
+        "value_type": "gauge",
+        "cmd": "amdgpu.pcie_bandwidth",
+        "timeout": 10
+    }
+]

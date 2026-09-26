@@ -29,6 +29,7 @@ webapp/
 ├── .gitignore
 ├── data/                # all static + runtime data (never code)
 │   ├── config/          # one <name>.json per active handler
+│   │   ├── amdgpu.json
 │   │   ├── bash.json
 │   │   ├── builtin.json
 │   │   └── openvpn.json
@@ -52,6 +53,7 @@ webapp/
 │   │   ├── util.py      #   env/IO/number/key-value helpers
 │   │   └── exposition.py #   Prometheus value parsing + rendering
 │   └── handlers/        # drop-in folder for handlers
+│       ├── amdgpu.py    # AmdGpuMetricHandler (amd-smi monitor)
 │       ├── bash.py      # BashMetricHandler
 │       ├── builtin.py   # BuiltinMetricHandler (runtime state, no subprocess)
 │       └── openvpn.py   # OpenVpnMetricHandler (parses OpenVPN status files)
@@ -188,7 +190,8 @@ defaults in the base class; override them if your config format or
 rendering differs. Loader rules: zero handler classes in a module →
 skipped with a warning; more than one → startup error.
 
-Shipped handlers: [handler-bash.md](docs/handler-bash.md),
+Shipped handlers: [handler-amdgpu.md](docs/handler-amdgpu.md),
+[handler-bash.md](docs/handler-bash.md),
 [handler-builtin.md](docs/handler-builtin.md),
 [handler-openvpn.md](docs/handler-openvpn.md). The general handler
 model lives in [docs/handlers.md](docs/handlers.md).
@@ -387,6 +390,28 @@ on demand (`openvpn.up`, `openvpn.status_update_time`,
 metrics, `openvpn.client.*` counters and `openvpn.config.*` values);
 unknown commands are rejected by `verify()`. Full command table:
 [docs/handler-openvpn.md](docs/handler-openvpn.md).
+
+## AMD GPU handler
+
+`AmdGpuMetricHandler` (`webapp/handlers/amdgpu.py`, config
+`data/config/amdgpu.json`) collects AMD GPU metrics via
+`amd-smi monitor --json`. One amd-smi invocation per cycle serves all
+metrics; its timeout is the max of the requesting metrics' `timeout`
+values. Every sample carries the `gpu` label (the GPU id reported by
+amd-smi, row position as fallback).
+
+- `cmd` names an `amdgpu.*` command (one per JSON field plus
+  `amdgpu.up` and `amdgpu.throttled`); unknown commands are rejected
+  by `verify()`, and histogram/summary `value_type` is rejected.
+  Full command table: [docs/handler-amdgpu.md](docs/handler-amdgpu.md).
+- Fields reported as `N/A` (encoder/decoder utilization, PCIe
+  bandwidth) yield **no sample** for that GPU — no zero is fabricated.
+- A failed amd-smi run (missing binary, non-zero exit, timeout,
+  unparseable JSON) is tolerated: warning logged, `sms_amdgpu_up`
+  reports `0.0` with `gpu=""`, the other metrics yield no samples and
+  the cycle succeeds.
+- `amdgpu.throttled` is `0.0` when amd-smi reports `UNTHROTTLED`,
+  `1.0` for any other state; a missing field yields no sample.
 
 ## Known boundaries (out of scope for now)
 

@@ -180,10 +180,15 @@ Each handler has its own reference, including the table of every
 
 | Handler | Module | Config | Reference |
 |---------|--------|--------|-----------|
+| amdgpu | `webapp/handlers/amdgpu.py` | `data/config/amdgpu.json` | [handler-amdgpu.md](handler-amdgpu.md) |
 | bash | `webapp/handlers/bash.py` | `data/config/bash.json` | [handler-bash.md](handler-bash.md) |
 | builtin | `webapp/handlers/builtin.py` | `data/config/builtin.json` | [handler-builtin.md](handler-builtin.md) |
 | openvpn | `webapp/handlers/openvpn.py` | `data/config/openvpn.json` | [handler-openvpn.md](handler-openvpn.md) |
 
+- **amdgpu** runs `amd-smi monitor --json` once per cycle; `cmd` maps
+  to an `amdgpu.*` JSON field, samples carry a `gpu` label, `N/A`
+  fields yield no sample, and a failed run reports `up` `0.0` without
+  failing the cycle.
 - **bash** runs one command per metric and parses its stdout (scalar or
   histogram/summary) — `cmd` is an arbitrary command line.
 - **builtin** maps `cmd` to a builtin provider (runtime state, OS

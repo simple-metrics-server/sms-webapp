@@ -144,6 +144,8 @@ Detailed topic READMEs live in [docs/](docs/):
   probes reference
 - [handler-openvpn.md](docs/handler-openvpn.md) — OpenVPN status
   handler, `network`/`type` labels and `openvpn.*` commands
+- [handler-amdgpu.md](docs/handler-amdgpu.md) — AMD GPU handler,
+  one `amd-smi monitor --json` run per cycle, `gpu` label
 - [CLI](docs/cli.md) — all options, HTTPS preflight, systemd
   install/uninstall
 

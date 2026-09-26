@@ -56,6 +56,7 @@ Design goals, in order:
 | `webapp/helpers/support.py` | `HandlerSupport`: handler-facing facade for verification, command execution and rendering |
 | `webapp/helpers/util.py` | generic helpers: env lists, file/command IO, key/value parsing, numbers |
 | `webapp/helpers/exposition.py` | Prometheus exposition: value/distribution parsing and rendering |
+| `webapp/handlers/amdgpu.py` | `AmdGpuMetricHandler` — AMD GPU metrics via `amd-smi monitor --json` |
 | `webapp/handlers/bash.py` | `BashMetricHandler` — metrics from shell commands |
 | `webapp/handlers/builtin.py` | `BuiltinMetricHandler` — runtime/OS state, no subprocess per metric |
 | `webapp/handlers/openvpn.py` | `OpenVpnMetricHandler` — OpenVPN `--status` files |
@@ -126,6 +127,7 @@ injects itself (the builtin handler uses this to read shared state).
 | A single command of the bash handler | its execute fails → the cycle fails (no partial output) |
 | A builtin OS probe (missing binary, timeout, non-zero exit) | logged as warning, the metric reports `0.0`; the cycle still succeeds |
 | A missing/malformed OpenVPN status file | logged as warning, `sms_openvpn_up` reports `0.0`; the cycle still succeeds |
+| A failed `amd-smi` run (amdgpu handler) | logged as warning, `sms_amdgpu_up` reports `0.0`, no samples; the cycle still succeeds |
 | Cycle exceeds the scrape interval | cycle aborted by `asyncio.wait_for`, logged, previous cache kept |
 
 ## Concurrency and state
